@@ -15,6 +15,7 @@ const AdminSessions = ({ sessions, deals, members = [], onRefresh }) => {
   const [notesSession, setNotesSession] = useState(null);
   const [notesLoading, setNotesLoading] = useState(false);
   const [notesData, setNotesData] = useState({ attendees: [], participants: [], meeting_notes: '' });
+  const [warningModal, setWarningModal] = useState({ open: false, session: null, url: null });
   const [formData, setFormData] = useState({
     type: 'seminar',
     title: '',
@@ -76,6 +77,18 @@ const AdminSessions = ({ sessions, deals, members = [], onRefresh }) => {
     const addGuests = encodeURIComponent(guestEmails.join(','));
     const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${dates}&details=${details}&location=${location}&add=${addGuests}`;
 
+    setCreatingCalendarFor(null);
+    setWarningModal({ open: true, session, url });
+  };
+
+  const confirmCreateGoogleCalendar = async () => {
+    const { session, url } = warningModal;
+    if (!session || !url) return;
+
+    setWarningModal({ open: false, session: null, url: null });
+    window.open(url, '_blank', 'noopener,noreferrer');
+    setCreatingCalendarFor(session.id);
+
     const { error: updateError } = await supabase
       .from('sessions')
       .update({ google_calendar_link: url })
@@ -89,8 +102,11 @@ const AdminSessions = ({ sessions, deals, members = [], onRefresh }) => {
 
     setCalendarCreatedLocal((prev) => ({ ...prev, [session.id]: true }));
     if (onRefresh) onRefresh();
-    window.open(url, '_blank', 'noopener,noreferrer');
     setCreatingCalendarFor(null);
+  };
+
+  const cancelCreateGoogleCalendar = () => {
+    setWarningModal({ open: false, session: null, url: null });
   };
 
   const handleCalendarReset = async (session) => {
@@ -720,6 +736,26 @@ const AdminSessions = ({ sessions, deals, members = [], onRefresh }) => {
             <Button onClick={handleSaveNotes} disabled={notesLoading}>
               {notesLoading ? 'Saving...' : 'Save Notes'}
             </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={warningModal.open}
+        onClose={cancelCreateGoogleCalendar}
+        title="Before you continue"
+        size="md"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-700 leading-relaxed">
+            <span className="font-semibold">WARNING:</span> Un-check{' '}
+            <span className="font-medium">"Guests can see guest list"</span> before saving the
+            Google invite, or the RSVP list will be public.
+          </p>
+
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <Button variant="outline" onClick={cancelCreateGoogleCalendar}>Cancel</Button>
+            <Button onClick={confirmCreateGoogleCalendar}>Continue</Button>
           </div>
         </div>
       </Modal>
