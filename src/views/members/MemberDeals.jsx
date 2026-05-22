@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, DollarSign, Clock, FileText, ExternalLink, CheckCircle, AlertCircle, Eye, ChevronDown, ChevronUp } from 'lucide-react';
+import { TrendingUp, DollarSign, Clock, FileText, ExternalLink, CheckCircle, AlertCircle, Eye, ChevronDown, ChevronUp, Play } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { formatDate } from '../../utils/formatters';
 import { Button, Card, Badge, Modal } from '../../components/ui';
@@ -11,6 +11,10 @@ const MemberDeals = ({ deals, currentUser }) => {
   const [showDocumentModal, setShowDocumentModal] = useState(false);
   const [documentUrl, setDocumentUrl] = useState('');
   const [documentTitle, setDocumentTitle] = useState('');
+  const [showVideoModal, setShowVideoModal] = useState(false);
+  const [videoUrl, setVideoUrl] = useState('');
+  const [videoTitle, setVideoTitle] = useState('');
+  const [videoCaption, setVideoCaption] = useState('');
   const [interestType, setInterestType] = useState('');
   const [investmentAmount, setInvestmentAmount] = useState('');
   const [investmentAmountType, setInvestmentAmountType] = useState('up_to'); // 'up_to', 'max'
@@ -88,6 +92,18 @@ const MemberDeals = ({ deals, currentUser }) => {
     if (!url) return '';
     if (url.startsWith('http://') || url.startsWith('https://')) return url;
     return 'https://' + url;
+  };
+
+  const toEmbedUrl = (url) => {
+    const u = ensureUrl(url);
+    if (!u) return '';
+    const vidyard = u.match(/(?:share|play)\.vidyard\.com\/(?:watch\/)?([A-Za-z0-9_-]+)/);
+    if (vidyard) return `https://play.vidyard.com/${vidyard[1]}.html?autoplay=1`;
+    const yt = u.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/);
+    if (yt) return `https://www.youtube.com/embed/${yt[1]}?autoplay=1`;
+    const vimeo = u.match(/vimeo\.com\/(?:video\/)?(\d+)/);
+    if (vimeo) return `https://player.vimeo.com/video/${vimeo[1]}?autoplay=1`;
+    return u;
   };
 
   // Handle interest submission
@@ -629,6 +645,30 @@ View deal: ${window.location.origin}/deals
                         </h3>
                       </div>
                       <div className="p-3 space-y-2 max-h-[400px] overflow-y-auto">
+                        {deal.video_url && (
+                          <div
+                            onClick={() => {
+                              setVideoUrl(toEmbedUrl(deal.video_url));
+                              setVideoTitle(deal.video_title || 'Watch overview');
+                              setVideoCaption(deal.video_caption || '');
+                              setShowVideoModal(true);
+                            }}
+                            className="block cursor-pointer"
+                          >
+                            <div className="p-3 border border-gray-200 rounded-lg hover:border-red-500 hover:bg-red-50 transition-all group">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center group-hover:bg-red-200 transition-colors">
+                                  <Play size={20} className="text-red-600 fill-red-600" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-medium text-gray-900 text-sm">{deal.video_title || 'Watch overview'}</p>
+                                  <p className="text-xs text-gray-500">Company video</p>
+                                </div>
+                                <Eye size={14} className="text-gray-400 group-hover:text-red-500" />
+                              </div>
+                            </div>
+                          </div>
+                        )}
                         {deal.memo_url ? (
                           <div 
                             onClick={() => {
@@ -998,6 +1038,34 @@ View deal: ${window.location.origin}/deals
             style={{ position: 'relative', zIndex: 1 }}
           />
         </div>
+      </Modal>
+
+      {/* Video Player Modal */}
+      <Modal
+        isOpen={showVideoModal}
+        onClose={() => {
+          setShowVideoModal(false);
+          setVideoUrl('');
+          setVideoTitle('');
+          setVideoCaption('');
+        }}
+        title={videoTitle}
+        size="xl"
+      >
+        <div className="w-full relative overflow-hidden rounded-lg bg-black" style={{ aspectRatio: '16 / 9' }}>
+          {videoUrl && (
+            <iframe
+              src={videoUrl}
+              className="w-full h-full border-0"
+              title={videoTitle}
+              allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+              allowFullScreen
+            />
+          )}
+        </div>
+        {videoCaption && (
+          <p className="mt-3 text-sm text-gray-600 leading-relaxed">{videoCaption}</p>
+        )}
       </Modal>
     </div>
   );

@@ -38,6 +38,9 @@ const AdminDeals = ({ deals, onRefresh }) => {
     memo_url: '',
     deck_url: '',
     portal_url: '',
+    video_url: '',
+    video_title: '',
+    video_caption: '',
     deal_deadline: '',
     av_allocation: '',
     minimum_check: '',
@@ -69,6 +72,9 @@ const AdminDeals = ({ deals, onRefresh }) => {
       memo_url: '',
       deck_url: '',
       portal_url: '',
+      video_url: '',
+      video_title: '',
+      video_caption: '',
       deal_deadline: '',
       av_allocation: '',
       minimum_check: '',
@@ -112,6 +118,9 @@ const AdminDeals = ({ deals, onRefresh }) => {
       memo_url: deal.memo_url || '',
       deck_url: deal.deck_url || '',
       portal_url: deal.portal_url || '',
+      video_url: deal.video_url || '',
+      video_title: deal.video_title || '',
+      video_caption: deal.video_caption || '',
       deal_deadline: deal.deal_deadline || deal.voting_deadline || '',
       av_allocation: deal.av_allocation || '',
       minimum_check: deal.minimum_check || '',
@@ -318,6 +327,9 @@ const AdminDeals = ({ deals, onRefresh }) => {
         memo_url: formData.memo_url,
         deck_url: formData.deck_url,
         portal_url: formData.portal_url,
+        video_url: formData.video_url,
+        video_title: formData.video_title,
+        video_caption: formData.video_caption,
         deal_deadline: formData.deal_deadline || null,
         av_allocation: formData.av_allocation,
         minimum_check: formData.minimum_check,
@@ -718,6 +730,36 @@ const AdminDeals = ({ deals, onRefresh }) => {
                     onChange={(e) => setFormData({ ...formData, portal_url: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                     placeholder="https://..."
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Overview Video (Vidyard / YouTube / Vimeo URL)</label>
+                  <input
+                    type="url"
+                    value={formData.video_url}
+                    onChange={(e) => setFormData({ ...formData, video_url: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    placeholder="https://share.vidyard.com/watch/..."
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Video Title <span className="text-gray-400 font-normal">(optional — defaults to "Watch overview")</span></label>
+                  <input
+                    type="text"
+                    value={formData.video_title}
+                    onChange={(e) => setFormData({ ...formData, video_title: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    placeholder='e.g. "Hear from the founder"'
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Video Caption <span className="text-gray-400 font-normal">(optional — shown below the player)</span></label>
+                  <textarea
+                    value={formData.video_caption}
+                    onChange={(e) => setFormData({ ...formData, video_caption: e.target.value })}
+                    rows={2}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    placeholder='e.g. "Hear from the CEO"'
                   />
                 </div>
                 <div>
