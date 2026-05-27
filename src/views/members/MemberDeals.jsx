@@ -57,12 +57,11 @@ const MemberDeals = ({ deals, currentUser }) => {
     }
   };
 
-  // A deal is "past" if admin marked it closed/passed, OR the club's
-  // closes_at deadline has elapsed. Otherwise it's active.
+  // A deal is "past" purely based on the club deadline (closes_at) set via the
+  // admin calendar button. Status is not used to determine this. No deadline
+  // set → the deal stays active.
   const isPastDeal = (d) => {
-    if (d.status === 'closed' || d.status === 'passed') return true;
-    if (d.closes_at && new Date(d.closes_at).getTime() < Date.now()) return true;
-    return false;
+    return !!(d.closes_at && new Date(d.closes_at).getTime() < Date.now());
   };
   const activeDeals = deals.filter(d => !isPastDeal(d));
   const archivedDeals = deals.filter(d => isPastDeal(d));

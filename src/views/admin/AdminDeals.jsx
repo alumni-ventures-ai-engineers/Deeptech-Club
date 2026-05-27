@@ -179,12 +179,13 @@ const AdminDeals = ({ deals, onRefresh }) => {
     setShowEmailConfirm(true);
   };
 
-  // Mark a deal as past — moves it to members' Past tab and stops it showing
-  // as active. Stays in the admin list so it can be reviewed/removed later.
+  // Mark a deal as past — sets the club deadline (closes_at) to now so it moves
+  // to members' Past tab. Past/active is driven entirely by closes_at, so this
+  // just back-dates the deadline. Stays in the admin list for later review.
   const markAsPast = async (deal) => {
     if (!confirm(`Mark "${deal.company_name}" as past? It will move to the Past tab and no longer show as active to members.`)) return;
     try {
-      const { error } = await supabase.from('deals').update({ status: 'closed' }).eq('id', deal.id);
+      const { error } = await supabase.from('deals').update({ closes_at: new Date().toISOString() }).eq('id', deal.id);
       if (error) throw error;
       onRefresh();
     } catch (err) {
@@ -192,13 +193,38 @@ const AdminDeals = ({ deals, onRefresh }) => {
     }
   };
 
-  // Format an ISO timestamp into the value expected by <input type="datetime-local">
-  // (YYYY-MM-DDTHH:mm in local browser time)
+  // Render a stored UTC instant as Eastern (America/New_York) wall-clock for the
+  // datetime-local input, so the admin always edits in ET regardless of their
+  // own browser timezone.
   const toDatetimeLocalValue = (iso) => {
     if (!iso) return '';
-    const d = new Date(iso);
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/New_York',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    }).formatToParts(new Date(iso));
+    const get = (t) => parts.find(p => p.type === t)?.value;
+    let hour = get('hour');
+    if (hour === '24') hour = '00';
+    return `${get('year')}-${get('month')}-${get('day')}T${hour}:${get('minute')}`;
+  };
+
+  // Interpret a datetime-local string ("YYYY-MM-DDTHH:mm") as Eastern wall-clock
+  // and return the corresponding UTC ISO string. Handles EST/EDT automatically.
+  const easternLocalToUtcIso = (localValue) => {
+    if (!localValue) return null;
+    const [datePart, timePart] = localValue.split('T');
+    const [y, mo, d] = datePart.split('-').map(Number);
+    const [h, mi] = timePart.split(':').map(Number);
+    const naiveUtc = Date.UTC(y, mo - 1, d, h, mi);
+    const etParts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York', hour12: false,
+      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+    }).formatToParts(new Date(naiveUtc));
+    const getp = (t) => Number(etParts.find(p => p.type === t)?.value);
+    let etHour = getp('hour'); if (etHour === 24) etHour = 0;
+    const etShownAsUtc = Date.UTC(getp('year'), getp('month') - 1, getp('day'), etHour, getp('minute'));
+    return new Date(2 * naiveUtc - etShownAsUtc).toISOString();
   };
 
   const openDeadlineModal = (deal) => {
@@ -210,9 +236,7 @@ const AdminDeals = ({ deals, onRefresh }) => {
     if (!deadlineModalDeal) return;
     setSavingDeadline(true);
     try {
-      const isoValue = deadlineInputValue
-        ? new Date(deadlineInputValue).toISOString()
-        : null;
+      const isoValue = easternLocalToUtcIso(deadlineInputValue);
       const { error } = await supabase
         .from('deals')
         .update({ closes_at: isoValue })
@@ -551,7 +575,7 @@ const AdminDeals = ({ deals, onRefresh }) => {
       >
         <div className="space-y-4">
           <p className="text-sm text-gray-600">
-            Set a club-specific deadline for this deal. When this date passes, the deal automatically moves to the <strong>Past</strong> tab on the member side. Leave empty to disable auto-archiving (only manual status changes will move it).
+            Set a club-specific deadline for this deal. When this date passes, the deal automatically moves to the <strong>Past</strong> tab on the member side. Leave empty to keep it active — the deadline is the only thing that moves a deal to Past.
           </p>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Closes At</label>
@@ -561,7 +585,7 @@ const AdminDeals = ({ deals, onRefresh }) => {
               onChange={(e) => setDeadlineInputValue(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
-            <p className="text-xs text-gray-500 mt-1">Time is in your local timezone.</p>
+            <p className="text-xs text-gray-500 mt-1">Time is in U.S. Eastern (ET).</p>
           </div>
           <div className="flex justify-between gap-3 pt-4 border-t">
             <Button
