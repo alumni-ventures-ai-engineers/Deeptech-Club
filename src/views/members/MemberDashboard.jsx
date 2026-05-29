@@ -179,7 +179,11 @@ const MemberDashboard = ({ members, sessions, deals, announcements, avTeam, cont
           </div>
           <div className="space-y-3 flex-1 flex flex-col">
             {upcomingSessions.length === 0 ? (
-              <p className="text-gray-500 text-sm">No upcoming meetings</p>
+              <div className="text-center py-8">
+                <Calendar size={40} className="mx-auto text-gray-300 mb-3" />
+                <p className="text-gray-500">No upcoming meetings</p>
+                <p className="text-sm text-gray-400">Check back soon!</p>
+              </div>
             ) : (
               upcomingSessions.map((session) => {
                 return (
