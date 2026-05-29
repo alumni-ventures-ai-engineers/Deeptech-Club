@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronDown, ChevronRight, Mail, CheckCircle, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Mail, CheckCircle, X, Pencil } from 'lucide-react';
 import { supabase, callDealRoomAdmin } from '../../supabase';
-import { Card } from '../../components/ui';
+import { Card, Modal, Button } from '../../components/ui';
 
 const AdminDealInterests = ({ onRefresh }) => {
   const [deals, setDeals] = useState([]);
@@ -14,6 +14,8 @@ const AdminDealInterests = ({ onRefresh }) => {
   const [toast, setToast] = useState(null);
   const [dealLogos, setDealLogos] = useState({});
   const [sessionReminders, setSessionReminders] = useState({}); // key: `${dealId}-${email}` -> count sent this session
+  const [editModal, setEditModal] = useState({ open: false, row: null, dealName: null, decision: 'invest', amount: '' });
+  const [savingEdit, setSavingEdit] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -249,6 +251,49 @@ const AdminDealInterests = ({ onRefresh }) => {
     showToast(`Sent ${sent} of ${pending.length} reminders`);
   };
 
+  const openEditModal = (row, dealName) => {
+    setEditModal({
+      open: true,
+      row,
+      dealName,
+      decision: row.decision === 'pass' ? 'pass' : 'invest',
+      amount: row.amount != null ? String(row.amount) : '',
+    });
+  };
+
+  const closeEditModal = () => {
+    setEditModal({ open: false, row: null, dealName: null, decision: 'invest', amount: '' });
+  };
+
+  const saveEdit = async () => {
+    const { row, decision, amount } = editModal;
+    if (!row) return;
+    let desiredAmount = null;
+    if (decision === 'invest') {
+      const parsed = parseFloat(amount);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        alert('Enter a valid interest amount (greater than 0) for an Invest decision.');
+        return;
+      }
+      desiredAmount = parsed;
+    }
+    setSavingEdit(true);
+    try {
+      await callDealRoomAdmin('updateResponse', {
+        responseId: row.id,
+        decision,
+        desiredAmount,
+      });
+      showToast(`Updated ${row.name}'s response`);
+      closeEditModal();
+      await loadData();
+    } catch (err) {
+      alert(`Failed to update: ${err.message || err}`);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -429,6 +474,16 @@ const AdminDealInterests = ({ onRefresh }) => {
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2">
+                              {!String(row.id).startsWith('pending-') && (row.decision === 'invest' || row.decision === 'pass') && (
+                                <button
+                                  onClick={() => openEditModal(row, dealName)}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+                                  title={`Edit ${row.name}'s response`}
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                  <span>Edit</span>
+                                </button>
+                              )}
                               <button
                                 onClick={() => {
                                   if (!confirm(`Send a reminder email to ${row.name} (${row.email}) for ${dealName}?`)) return;
@@ -479,6 +534,56 @@ const AdminDealInterests = ({ onRefresh }) => {
           </div>
         </div>
       )}
+
+      {/* Edit response modal */}
+      <Modal
+        isOpen={editModal.open}
+        onClose={closeEditModal}
+        title={editModal.row ? `Edit response — ${editModal.row.name}` : 'Edit response'}
+        size="md"
+      >
+        {editModal.row && (
+          <div className="space-y-4">
+            <div className="text-sm text-gray-600">
+              <span className="font-medium text-gray-800">{editModal.dealName}</span>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Decision</label>
+              <select
+                value={editModal.decision}
+                onChange={(e) => setEditModal(prev => ({ ...prev, decision: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="invest">Invest</option>
+                <option value="pass">Pass</option>
+              </select>
+            </div>
+            {editModal.decision === 'invest' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Interest Amount</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                  <input
+                    type="number"
+                    value={editModal.amount}
+                    onChange={(e) => setEditModal(prev => ({ ...prev, amount: e.target.value }))}
+                    placeholder="e.g., 50000"
+                    min="0"
+                    step="1000"
+                    className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+            )}
+            <div className="flex justify-end gap-3 pt-4 border-t">
+              <Button variant="outline" onClick={closeEditModal} disabled={savingEdit}>Cancel</Button>
+              <Button onClick={saveEdit} disabled={savingEdit}>
+                {savingEdit ? 'Saving...' : 'Save'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };

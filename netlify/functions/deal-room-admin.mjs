@@ -132,6 +132,26 @@ export default async (req) => {
       return json(200, { reminders_sent: next });
     }
 
+    if (action === 'updateResponse') {
+      const { responseId, decision, desiredAmount } = body;
+      if (!responseId) return json(400, { error: 'Missing responseId' });
+      if (decision !== 'invest' && decision !== 'pass') {
+        return json(400, { error: 'Invalid decision' });
+      }
+      // pass = no amount; invest can have a numeric amount or null
+      const amount = decision === 'pass' ? null : (desiredAmount ?? null);
+      const { error: updErr } = await sb2
+        .from('dr_responses')
+        .update({
+          decision,
+          desired_amount: amount,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', responseId);
+      if (updErr) throw updErr;
+      return json(200, { success: true });
+    }
+
     if (action === 'listAllResponsesAndUsers') {
       const [respRes, usersRes] = await Promise.all([
         sb2.from('dr_responses').select('*').not('user_id', 'is', null),
