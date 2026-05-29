@@ -151,9 +151,7 @@ export const MemberLogin = ({ onLogin, members }) => {
       <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: 'var(--primary-color, #1B4D5C)' }}>
         <Card className="w-full max-w-md">
           <div className="text-center mb-6">
-            <div className="w-16 h-16 rounded-xl mx-auto mb-4 flex items-center justify-center" style={{ backgroundColor: '#C9A227' }}>
-              <img src="/av-logo.png" alt="AV logo" className="w-8 h-8 object-contain" />
-            </div>
+            <img src="/av-logo.png" alt="AV logo" className="w-16 h-16 mx-auto mb-4 object-contain" />
             <h1 className="text-2xl font-bold text-gray-900">Create Your Password</h1>
             <p className="text-gray-500 mt-1">Please set a new password to continue</p>
           </div>
