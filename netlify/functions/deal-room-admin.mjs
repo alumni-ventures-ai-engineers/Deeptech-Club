@@ -151,20 +151,34 @@ export default async (req) => {
     }
 
     if (action === 'updateResponse') {
-      const { responseId, decision, desiredAmount } = body;
+      const { responseId, decision, desiredAmount, reason } = body;
       if (!responseId) return json(400, { error: 'Missing responseId' });
       if (decision !== 'invest' && decision !== 'pass') {
         return json(400, { error: 'Invalid decision' });
       }
       // pass = no amount; invest can have a numeric amount or null (Max)
       const amount = decision === 'pass' ? null : (desiredAmount ?? null);
+      const now = new Date().toISOString();
+      const patch = {
+        decision,
+        desired_amount: amount,
+        updated_at: now,
+      };
+      // Only touch reason if the client sent it (undefined = leave as-is).
+      if (reason !== undefined) patch.reason = reason || null;
+
+      // Stamp submitted_at if the row doesn't have one yet (admin first to
+      // record a decision for someone who never submitted themselves).
+      const { data: existing } = await sb2
+        .from('dr_responses')
+        .select('submitted_at')
+        .eq('id', responseId)
+        .maybeSingle();
+      if (!existing?.submitted_at) patch.submitted_at = now;
+
       const { error: updErr } = await sb2
         .from('dr_responses')
-        .update({
-          decision,
-          desired_amount: amount,
-          updated_at: new Date().toISOString(),
-        })
+        .update(patch)
         .eq('id', responseId);
       if (updErr) throw updErr;
       return json(200, { success: true });
@@ -175,7 +189,7 @@ export default async (req) => {
       // one themselves yet (or replacing an existing one). Auto-creates the
       // SB2 user if missing so members who've never logged into the deal room
       // can still have their decision logged.
-      const { sourceDealId, email, fullName, decision, desiredAmount } = body;
+      const { sourceDealId, email, fullName, decision, desiredAmount, reason } = body;
       if (!sourceDealId || !email) return json(400, { error: 'Missing sourceDealId or email' });
       if (decision !== 'invest' && decision !== 'pass') {
         return json(400, { error: 'Invalid decision' });
@@ -196,6 +210,7 @@ export default async (req) => {
       if (existing) {
         const patch = { decision, desired_amount: amount, updated_at: now };
         if (!existing.submitted_at) patch.submitted_at = now;
+        if (reason !== undefined) patch.reason = reason || null;
         const { error } = await sb2.from('dr_responses').update(patch).eq('id', existing.id);
         if (error) throw error;
         return json(200, { success: true, id: existing.id, updated: true });
@@ -208,6 +223,7 @@ export default async (req) => {
           user_id: userId,
           decision,
           desired_amount: amount,
+          reason: reason || null,
           submitted_at: now,
           reminders_sent: 0,
         }])

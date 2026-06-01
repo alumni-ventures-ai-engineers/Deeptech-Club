@@ -17,6 +17,7 @@ const AdminDealInterests = ({ onRefresh }) => {
   const [editingRowId, setEditingRowId] = useState(null);
   const [editDecision, setEditDecision] = useState('invest');
   const [editAmount, setEditAmount] = useState('');
+  const [editReason, setEditReason] = useState('');
   const [editDealContext, setEditDealContext] = useState(null);
   const [savingEditId, setSavingEditId] = useState(null);
 
@@ -260,6 +261,7 @@ const AdminDealInterests = ({ onRefresh }) => {
     setEditingRowId(row.id);
     setEditDecision(row.decision === 'pass' ? 'pass' : 'invest');
     setEditAmount(row.amount != null ? String(row.amount) : '');
+    setEditReason(row.reason || '');
     // Stash the deal context so saveEdit can create a response on a row that
     // doesn't have one yet (pending-* synthetic rows have no responseId).
     setEditDealContext({ sourceDealId: deal.source_deal_id, dealId: deal.id });
@@ -267,6 +269,7 @@ const AdminDealInterests = ({ onRefresh }) => {
 
   const cancelEdit = () => {
     setEditingRowId(null);
+    setEditReason('');
     setEditDealContext(null);
   };
 
@@ -281,6 +284,7 @@ const AdminDealInterests = ({ onRefresh }) => {
       }
       desiredAmount = parsed;
     }
+    const reason = editReason.trim() || null;
     setSavingEditId(row.id);
     try {
       if (String(row.id).startsWith('pending-')) {
@@ -293,16 +297,19 @@ const AdminDealInterests = ({ onRefresh }) => {
           fullName: row.name,
           decision: editDecision,
           desiredAmount,
+          reason,
         });
       } else {
         await callDealRoomAdmin('updateResponse', {
           responseId: row.id,
           decision: editDecision,
           desiredAmount,
+          reason,
         });
       }
       showToast(`Updated ${row.name}'s response`);
       setEditingRowId(null);
+      setEditReason('');
       setEditDealContext(null);
       await loadData();
     } catch (err) {
@@ -524,7 +531,16 @@ const AdminDealInterests = ({ onRefresh }) => {
                             )}
                           </td>
                           <td className="px-6 py-4 text-gray-700 max-w-xs">
-                            {row.reason ? (
+                            {editingRowId === row.id ? (
+                              <textarea
+                                value={editReason}
+                                onChange={(e) => setEditReason(e.target.value)}
+                                disabled={savingEditId === row.id}
+                                rows={2}
+                                placeholder="Optional reason…"
+                                className="w-56 px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
+                              />
+                            ) : row.reason ? (
                               <span className="text-sm line-clamp-2" title={row.reason}>{row.reason}</span>
                             ) : (
                               <span className="text-gray-400">—</span>
