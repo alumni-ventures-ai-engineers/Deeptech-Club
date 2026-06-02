@@ -233,6 +233,124 @@ export default async (req) => {
       return json(200, { success: true, id: inserted.id, updated: false });
     }
 
+    if (action === 'pushMeetingToSb2') {
+      // Mirror a portal meeting to SB2 so cross-club tools (ClubManagementCW
+      // member-engagement views etc.) can read attendance + per-member notes.
+      // Source of truth stays on SB1; this is best-effort sync.
+      const {
+        clubSlug,
+        sourceSessionId,
+        title,
+        meetingType,
+        hostName,
+        scheduledAt,
+        generalNotes,
+        members, // [{ email, fullName, attended, participated, memberNote }]
+      } = body;
+      if (!clubSlug || !sourceSessionId) {
+        return json(400, { error: 'Missing clubSlug or sourceSessionId' });
+      }
+
+      // Resolve club_id via slug.
+      const { data: club, error: clubErr } = await sb2
+        .from('clubs')
+        .select('id')
+        .eq('slug', clubSlug)
+        .maybeSingle();
+      if (clubErr) throw clubErr;
+      if (!club) return json(404, { error: `Club not found for slug "${clubSlug}"` });
+
+      // Upsert the meeting.
+      const now = new Date().toISOString();
+      const meetingFields = {
+        club_id: club.id,
+        source_session_id: sourceSessionId,
+        title: title || null,
+        meeting_type: meetingType || null,
+        host_name: hostName || null,
+        scheduled_at: scheduledAt || null,
+        general_notes: generalNotes || null,
+        updated_at: now,
+      };
+
+      const { data: existingMeeting } = await sb2
+        .from('meetings')
+        .select('id')
+        .eq('club_id', club.id)
+        .eq('source_session_id', sourceSessionId)
+        .maybeSingle();
+
+      let meetingId;
+      if (existingMeeting) {
+        meetingId = existingMeeting.id;
+        const { error } = await sb2.from('meetings').update(meetingFields).eq('id', meetingId);
+        if (error) throw error;
+      } else {
+        const { data: inserted, error } = await sb2
+          .from('meetings')
+          .insert([meetingFields])
+          .select('id')
+          .single();
+        if (error) throw error;
+        meetingId = inserted.id;
+      }
+
+      // Upsert attendance rows for the supplied members. Members not in the
+      // list get their existing row deleted (admin unchecked them).
+      const incomingUserIds = new Set();
+      for (const m of members || []) {
+        if (!m?.email) continue;
+        if (!m.attended && !m.participated && !m.memberNote) continue;
+        const userId = await findOrCreateSb2UserByEmail(
+          sb2,
+          String(m.email).toLowerCase().trim(),
+          m.fullName
+        );
+        incomingUserIds.add(userId);
+
+        const row = {
+          meeting_id: meetingId,
+          user_id: userId,
+          attended: !!m.attended,
+          participated: !!m.participated,
+          member_note: m.memberNote || null,
+          updated_at: now,
+        };
+
+        const { data: existing } = await sb2
+          .from('meeting_attendance')
+          .select('id')
+          .eq('meeting_id', meetingId)
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (existing) {
+          const { error } = await sb2.from('meeting_attendance').update(row).eq('id', existing.id);
+          if (error) throw error;
+        } else {
+          const { error } = await sb2.from('meeting_attendance').insert([row]);
+          if (error) throw error;
+        }
+      }
+
+      // Reap unchecked members from prior saves.
+      const { data: existingAttendance } = await sb2
+        .from('meeting_attendance')
+        .select('id, user_id')
+        .eq('meeting_id', meetingId);
+      const staleIds = (existingAttendance || [])
+        .filter(r => !incomingUserIds.has(r.user_id))
+        .map(r => r.id);
+      if (staleIds.length > 0) {
+        const { error: delErr } = await sb2
+          .from('meeting_attendance')
+          .delete()
+          .in('id', staleIds);
+        if (delErr) throw delErr;
+      }
+
+      return json(200, { success: true, meetingId });
+    }
+
     if (action === 'listAllResponsesAndUsers') {
       const [respRes, usersRes] = await Promise.all([
         sb2.from('dr_responses').select('*').not('user_id', 'is', null),

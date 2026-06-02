@@ -1,8 +1,12 @@
 import React, { useState } from 'react';
-import { Plus, Edit, Trash2, Clock, MapPin, Users, Video, ExternalLink, Calendar, TrendingUp, BookOpen, ClipboardList, AlertTriangle } from 'lucide-react';
-import { supabase } from '../../supabase';
+import { Plus, Edit, Trash2, Clock, MapPin, Users, Video, ExternalLink, Calendar, TrendingUp, BookOpen, ClipboardList, AlertTriangle, Search } from 'lucide-react';
+import { supabase, callDealRoomAdmin } from '../../supabase';
 import { formatDate, formatTime } from '../../utils/formatters';
 import { Button, Card, Badge, Modal } from '../../components/ui';
+
+// Maps this portal to its row in SB2 public.clubs (used when mirroring meeting
+// notes to SB2 so ClubManagementCW + other cross-club views can read them).
+const SB2_CLUB_SLUG = 'deep-tech';
 
 const AdminSessions = ({ sessions, deals, members = [], onRefresh }) => {
   const [showModal, setShowModal] = useState(false);
@@ -15,7 +19,9 @@ const AdminSessions = ({ sessions, deals, members = [], onRefresh }) => {
   const [showNotesModal, setShowNotesModal] = useState(false);
   const [notesSession, setNotesSession] = useState(null);
   const [notesLoading, setNotesLoading] = useState(false);
-  const [notesData, setNotesData] = useState({ attendees: [], participants: [], meeting_notes: '' });
+  const [notesData, setNotesData] = useState({ attendees: [], participants: [], meeting_notes: '', member_notes: {} });
+  const [attendeeSearch, setAttendeeSearch] = useState('');
+  const [participantSearch, setParticipantSearch] = useState('');
   const [formData, setFormData] = useState({
     type: 'seminar',
     title: '',
@@ -235,8 +241,22 @@ const AdminSessions = ({ sessions, deals, members = [], onRefresh }) => {
       attendees: session.attendees || [],
       participants: session.participants || [],
       meeting_notes: session.meeting_notes || '',
+      member_notes: session.member_notes || {},
     });
+    setAttendeeSearch('');
+    setParticipantSearch('');
     setShowNotesModal(true);
+  };
+
+  // Helper: set/clear a per-member note. Empty string is normalized to undefined
+  // so the JSON doesn't accumulate empty keys.
+  const setMemberNote = (memberId, value) => {
+    setNotesData(prev => {
+      const next = { ...prev.member_notes };
+      if (value && value.trim()) next[memberId] = value;
+      else delete next[memberId];
+      return { ...prev, member_notes: next };
+    });
   };
 
   const toggleMemberInList = (list, memberId) => {
@@ -249,15 +269,49 @@ const AdminSessions = ({ sessions, deals, members = [], onRefresh }) => {
     if (!notesSession) return;
     setNotesLoading(true);
     try {
+      // 1) Persist locally on SB1 (source of truth for the portal).
       const { error } = await supabase
         .from('sessions')
         .update({
           attendees: notesData.attendees,
           participants: notesData.participants,
           meeting_notes: notesData.meeting_notes,
+          member_notes: notesData.member_notes || {},
         })
         .eq('id', notesSession.id);
       if (error) throw error;
+
+      // 2) Mirror to SB2 so ClubManagementCW + cross-club views can read it.
+      // Build the union of (attended ∪ participated) and ship one row per member.
+      const involvedIds = new Set([...(notesData.attendees || []), ...(notesData.participants || [])]);
+      const sb2Members = [];
+      for (const memberId of involvedIds) {
+        const m = members.find(x => x.id === memberId);
+        if (!m?.email) continue;
+        sb2Members.push({
+          email: m.email,
+          fullName: m.full_name || '',
+          attended: notesData.attendees.includes(memberId),
+          participated: notesData.participants.includes(memberId),
+          memberNote: notesData.member_notes?.[memberId] || null,
+        });
+      }
+      try {
+        await callDealRoomAdmin('pushMeetingToSb2', {
+          clubSlug: SB2_CLUB_SLUG,
+          sourceSessionId: notesSession.id,
+          title: notesSession.title || null,
+          meetingType: notesSession.type || null,
+          hostName: notesSession.host_name || null,
+          scheduledAt: notesSession.date || null,
+          generalNotes: notesData.meeting_notes || null,
+          members: sb2Members,
+        });
+      } catch (sb2Err) {
+        // SB2 mirror is best-effort — don't block the portal save if it fails.
+        console.warn('SB2 mirror failed (SB1 saved OK):', sb2Err);
+      }
+
       setShowNotesModal(false);
       onRefresh();
     } catch (err) {
@@ -639,28 +693,51 @@ const AdminSessions = ({ sessions, deals, members = [], onRefresh }) => {
                 </button>
               </div>
             </div>
-            <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
-              {clubMembers.map((member) => (
-                <label
-                  key={member.id}
-                  className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 cursor-pointer"
-                >
-                  <input
-                    type="checkbox"
-                    checked={notesData.attendees.includes(member.id)}
-                    onChange={() => setNotesData(prev => ({
-                      ...prev,
-                      attendees: toggleMemberInList(prev.attendees, member.id),
-                    }))}
-                    className="rounded"
-                    style={{ accentColor: '#1B4D5C' }}
-                  />
-                  <span className="text-sm text-gray-900">{member.full_name}</span>
-                  {member.member_company && (
-                    <span className="text-xs text-gray-400">{member.member_company}</span>
-                  )}
-                </label>
-              ))}
+            <div className="relative mb-2">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={attendeeSearch}
+                onChange={(e) => setAttendeeSearch(e.target.value)}
+                placeholder="Search members…"
+                className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2"
+              />
+            </div>
+            <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
+              {clubMembers
+                .filter(m => !attendeeSearch || (m.full_name || '').toLowerCase().includes(attendeeSearch.toLowerCase()))
+                .map((member) => {
+                  const isChecked = notesData.attendees.includes(member.id);
+                  return (
+                    <div key={member.id} className="px-4 py-2.5 hover:bg-gray-50">
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => setNotesData(prev => ({
+                            ...prev,
+                            attendees: toggleMemberInList(prev.attendees, member.id),
+                          }))}
+                          className="rounded"
+                          style={{ accentColor: '#1B4D5C' }}
+                        />
+                        <span className="text-sm text-gray-900">{member.full_name}</span>
+                        {member.member_company && (
+                          <span className="text-xs text-gray-400">{member.member_company}</span>
+                        )}
+                      </label>
+                      {isChecked && (
+                        <input
+                          type="text"
+                          value={notesData.member_notes?.[member.id] || ''}
+                          onChange={(e) => setMemberNote(member.id, e.target.value)}
+                          placeholder="Note about this member…"
+                          className="mt-1.5 ml-7 w-[calc(100%-1.75rem)] px-2 py-1 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      )}
+                    </div>
+                  );
+                })}
               {clubMembers.length === 0 && (
                 <p className="px-4 py-3 text-sm text-gray-500">No members found</p>
               )}
@@ -692,28 +769,51 @@ const AdminSessions = ({ sessions, deals, members = [], onRefresh }) => {
                 </button>
               </div>
             </div>
-            <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
-              {clubMembers.map((member) => (
-                <label
-                  key={member.id}
-                  className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 cursor-pointer"
-                >
-                  <input
-                    type="checkbox"
-                    checked={notesData.participants.includes(member.id)}
-                    onChange={() => setNotesData(prev => ({
-                      ...prev,
-                      participants: toggleMemberInList(prev.participants, member.id),
-                    }))}
-                    className="rounded"
-                    style={{ accentColor: '#059669' }}
-                  />
-                  <span className="text-sm text-gray-900">{member.full_name}</span>
-                  {member.member_company && (
-                    <span className="text-xs text-gray-400">{member.member_company}</span>
-                  )}
-                </label>
-              ))}
+            <div className="relative mb-2">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={participantSearch}
+                onChange={(e) => setParticipantSearch(e.target.value)}
+                placeholder="Search members…"
+                className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2"
+              />
+            </div>
+            <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
+              {clubMembers
+                .filter(m => !participantSearch || (m.full_name || '').toLowerCase().includes(participantSearch.toLowerCase()))
+                .map((member) => {
+                  const isChecked = notesData.participants.includes(member.id);
+                  return (
+                    <div key={member.id} className="px-4 py-2.5 hover:bg-gray-50">
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => setNotesData(prev => ({
+                            ...prev,
+                            participants: toggleMemberInList(prev.participants, member.id),
+                          }))}
+                          className="rounded"
+                          style={{ accentColor: '#059669' }}
+                        />
+                        <span className="text-sm text-gray-900">{member.full_name}</span>
+                        {member.member_company && (
+                          <span className="text-xs text-gray-400">{member.member_company}</span>
+                        )}
+                      </label>
+                      {isChecked && (
+                        <input
+                          type="text"
+                          value={notesData.member_notes?.[member.id] || ''}
+                          onChange={(e) => setMemberNote(member.id, e.target.value)}
+                          placeholder="Note about this member…"
+                          className="mt-1.5 ml-7 w-[calc(100%-1.75rem)] px-2 py-1 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      )}
+                    </div>
+                  );
+                })}
               {clubMembers.length === 0 && (
                 <p className="px-4 py-3 text-sm text-gray-500">No members found</p>
               )}
@@ -722,7 +822,7 @@ const AdminSessions = ({ sessions, deals, members = [], onRefresh }) => {
 
           {/* Free text notes */}
           <div>
-            <h4 className="font-medium text-gray-900 mb-2">Meeting Notes</h4>
+            <h4 className="font-medium text-gray-900 mb-2">General Meeting Notes</h4>
             <textarea
               value={notesData.meeting_notes}
               onChange={(e) => setNotesData(prev => ({ ...prev, meeting_notes: e.target.value }))}

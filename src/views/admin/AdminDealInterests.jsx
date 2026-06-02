@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronDown, ChevronRight, Mail, CheckCircle, X, Pencil } from 'lucide-react';
+import { ChevronDown, ChevronRight, Mail, CheckCircle, X, Pencil, Search } from 'lucide-react';
 import { supabase, callDealRoomAdmin } from '../../supabase';
 import { Card } from '../../components/ui';
 
@@ -20,6 +20,9 @@ const AdminDealInterests = ({ onRefresh }) => {
   const [editReason, setEditReason] = useState('');
   const [editDealContext, setEditDealContext] = useState(null);
   const [savingEditId, setSavingEditId] = useState(null);
+  // Search + status filter at the top of the page.
+  const [dealSearch, setDealSearch] = useState('');
+  const [dealStatusFilter, setDealStatusFilter] = useState('all'); // 'all' | 'active' | 'closed'
 
   useEffect(() => {
     loadData();
@@ -341,9 +344,62 @@ const AdminDealInterests = ({ onRefresh }) => {
     );
   }
 
+  // Apply search + status filter. "Active" = no closes_at yet, or closes_at in
+  // the future. "Closed" = closes_at in the past (the club's local deadline).
+  const now = Date.now();
+  const visibleDeals = deals.filter(deal => {
+    const q = dealSearch.trim().toLowerCase();
+    if (q && !(deal.company_name || '').toLowerCase().includes(q)) return false;
+    if (dealStatusFilter === 'all') return true;
+    const isPast = !!(deal.closes_at && new Date(deal.closes_at).getTime() < now);
+    return dealStatusFilter === 'closed' ? isPast : !isPast;
+  });
+
   return (
     <div className="space-y-4">
-      {deals.map(deal => {
+      {/* Search + status filter */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            value={dealSearch}
+            onChange={(e) => setDealSearch(e.target.value)}
+            placeholder="Search deals by name…"
+            className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+          {[
+            { value: 'all',    label: 'All' },
+            { value: 'active', label: 'Active' },
+            { value: 'closed', label: 'Closed' },
+          ].map(opt => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setDealStatusFilter(opt.value)}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                dealStatusFilter === opt.value
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {visibleDeals.length === 0 && (
+        <Card>
+          <div className="text-center py-8 text-sm text-gray-500">
+            No deals match the current filter.
+          </div>
+        </Card>
+      )}
+
+      {visibleDeals.map(deal => {
         const isExpanded = expandedDeals[deal.id];
         const rows = getMemberRows(deal.id, deal.source_deal_id);
         // A deal is past once its closes_at is in the past. Non-responders on

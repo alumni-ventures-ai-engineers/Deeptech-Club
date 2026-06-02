@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Users, Calendar, TrendingUp, Bell, Target, BookOpen, Briefcase, Download, Star, Save, CheckCircle, Settings } from 'lucide-react';
+import { Users, Calendar, TrendingUp, Bell, Target, BookOpen, Download, Star, Save, CheckCircle, Settings, CheckSquare } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { formatDate, parseDateValue } from '../../utils/formatters';
 import { Button, Card, Badge, Modal, Avatar } from '../../components/ui';
@@ -143,18 +143,18 @@ const AdminDashboard = ({ members, sessions, deals, announcements, avTeam, onNav
         ))}
       </div>
       
-      {/* Quick Actions */}
+      {/* Quick Actions — mirrors the sidebar admin nav (excluding Overview). */}
       <Card>
         <h3 className="font-semibold text-gray-900 mb-4">Quick Actions</h3>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <Button variant="outline" icon={Users} onClick={() => onNavigate('admin-members')}>
-            Add Member
+            Members
           </Button>
           <Button variant="outline" icon={Star} onClick={() => onNavigate('admin-leaders')}>
-            Add AV Team Member
+            AV Team
           </Button>
           <Button variant="outline" icon={Calendar} onClick={() => onNavigate('admin-sessions')}>
-            Create Meeting
+            Meetings
           </Button>
           <Button variant="outline" icon={BookOpen} onClick={() => onNavigate('admin-content')}>
             Manage Content
@@ -162,11 +162,14 @@ const AdminDashboard = ({ members, sessions, deals, announcements, avTeam, onNav
           <Button variant="outline" icon={TrendingUp} onClick={() => onNavigate('admin-deals')}>
             Deals
           </Button>
-          <Button variant="outline" icon={Briefcase} onClick={() => onNavigate('admin-portfolios')}>
-            Manage Portfolios
+          <Button variant="outline" icon={CheckSquare} onClick={() => onNavigate('admin-deal-interests')}>
+            Deal Interests
           </Button>
           <Button variant="outline" icon={Bell} onClick={() => onNavigate('admin-announcements')}>
             Announcements
+          </Button>
+          <Button variant="outline" icon={Settings} onClick={() => onNavigate('admin-settings')}>
+            Settings
           </Button>
         </div>
       </Card>
