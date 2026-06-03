@@ -420,7 +420,7 @@ const MemberDeals = ({ deals, currentUser }) => {
           className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${activeTab === 'archived' ? 'text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
           style={activeTab === 'archived' ? { borderColor: 'var(--primary-color, #1B4D5C)', color: 'var(--primary-color, #1B4D5C)' } : {}}
         >
-          Archived ({archivedDeals.length})
+          Closed ({archivedDeals.length})
         </button>
       </div>
 
@@ -732,8 +732,12 @@ const MemberDeals = ({ deals, currentUser }) => {
                 </div>
               )}
 
-              {/* Interest section — hidden once the deal is past (status closed/passed OR closes_at elapsed) */}
-              {deal.status === 'active' && !isPastDeal(deal) && (
+              {/* Interest section — only visible when:
+                  - deal is active and not past
+                  - admin has flipped the Activate switch (deal.interest_active)
+                  The Activate flag defaults to false so members don't see
+                  Invest/Pass until the club is ready to collect responses. */}
+              {deal.status === 'active' && !isPastDeal(deal) && deal.interest_active && (
                 <div className="border-t border-gray-200 -mx-6 -mb-6 mt-6 px-8 py-5 bg-gray-50">
                   <p className="text-base font-bold text-gray-900 mb-3.5 tracking-tight">Interested in this deal?</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
