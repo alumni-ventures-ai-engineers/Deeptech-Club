@@ -145,7 +145,7 @@ const AdminMembers = ({ members, avTeam, onRefresh }) => {
       const filePath = `profile-photos/${fileName}`;
       const { error } = await supabase.storage
         .from('profile-photos')
-        .upload(filePath, file, { cacheControl: '3600', upsert: true });
+        .upload(filePath, file, { cacheControl: '3600' });
       if (error) throw error;
       // Store the bare storage path; reads go through /api/storage-redirect.
       setFormData(prev => ({ ...prev, photo_url: filePath }));
