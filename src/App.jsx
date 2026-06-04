@@ -359,6 +359,9 @@ export default function App() {
 
   useEffect(() => {
     if (!siteSettings) return;
+    document.documentElement.style.setProperty('--primary-color', siteSettings.primary_color || '#1B4D5C');
+    document.documentElement.style.setProperty('--accent-color', siteSettings.accent_color || '#C9A227');
+    document.documentElement.style.setProperty('--logo-background-color', siteSettings.logo_background_color || '#1B4D5C');
     if (siteSettings.logo_url) {
       const existingIcon = document.querySelector('link[rel~="icon"]');
       if (existingIcon) {
@@ -369,6 +372,16 @@ export default function App() {
         icon.href = resolveAssetUrl(siteSettings.logo_url, '/av-logo.png');
         document.head.appendChild(icon);
       }
+    }
+    try {
+      localStorage.setItem('ngvc_site_settings', JSON.stringify({
+        primary_color: siteSettings.primary_color || '#1B4D5C',
+        accent_color: siteSettings.accent_color || '#C9A227',
+        logo_background_color: siteSettings.logo_background_color || '#1B4D5C',
+        logo_url: siteSettings.logo_url || '/av-logo.png'
+      }));
+    } catch {
+      // ignore storage errors
     }
   }, [siteSettings]);
   
@@ -407,7 +420,7 @@ export default function App() {
     setIsAdmin(false); // Reset admin mode
     setCurrentView('member-login');
   };
-
+  
   const handleAdminLogin = async (remember) => {
     setIsAdmin(true);
     setCurrentView('admin-dashboard');
