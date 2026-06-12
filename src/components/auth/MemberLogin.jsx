@@ -16,6 +16,77 @@ export const MemberLogin = ({ onLogin, members }) => {
   const [memberToUpdate, setMemberToUpdate] = useState(null);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+
+  // Self-service forgot-password state
+  // step: 'request' | 'verify' | 'done'
+  const [resetStep, setResetStep] = useState('request');
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetCode, setResetCode] = useState('');
+  const [resetNewPassword, setResetNewPassword] = useState('');
+  const [resetConfirmPassword, setResetConfirmPassword] = useState('');
+  const [resetInfo, setResetInfo] = useState('');
+
+  const resetForgotState = () => {
+    setShowForgotPassword(false);
+    setResetStep('request');
+    setResetEmail('');
+    setResetCode('');
+    setResetNewPassword('');
+    setResetConfirmPassword('');
+    setResetInfo('');
+    setError('');
+  };
+
+  const handleSendResetCode = async (e) => {
+    e.preventDefault();
+    setError('');
+    setResetInfo('');
+    if (!resetEmail.trim()) { setError('Please enter your email'); return; }
+    setLoading(true);
+    try {
+      await fetch('/.netlify/functions/request-password-reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: resetEmail.trim().toLowerCase() }),
+      });
+      // Always advance — server intentionally doesn't reveal whether the email exists
+      setResetInfo('If an account exists for that email, a 6-digit code is on its way.');
+      setResetStep('verify');
+    } catch {
+      setError('Could not send code. Please try again.');
+    }
+    setLoading(false);
+  };
+
+  const handleVerifyResetCode = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (!/^\d{6}$/.test(resetCode)) { setError('Code must be 6 digits'); return; }
+    if (resetNewPassword.length < 6) { setError('Password must be at least 6 characters'); return; }
+    if (resetNewPassword !== resetConfirmPassword) { setError('Passwords do not match'); return; }
+    setLoading(true);
+    try {
+      const res = await fetch('/.netlify/functions/verify-password-reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: resetEmail.trim().toLowerCase(),
+          code: resetCode,
+          newPassword: resetNewPassword,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Invalid or expired code');
+      } else {
+        setResetStep('done');
+      }
+    } catch {
+      setError('Network error. Please try again.');
+    }
+    setLoading(false);
+  };
+  
   
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -113,7 +184,7 @@ export const MemberLogin = ({ onLogin, members }) => {
     setLoading(false);
   };
   
-  // Forgot password view
+  // Forgot password view (3 steps: request -> verify -> done)
   if (showForgotPassword) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: 'var(--primary-color, #1B4D5C)' }}>
@@ -122,28 +193,126 @@ export const MemberLogin = ({ onLogin, members }) => {
             <div className="w-16 h-16 rounded-xl mx-auto mb-4 flex items-center justify-center" style={{ backgroundColor: '#C9A227' }}>
               <Lock size={32} className="text-white" />
             </div>
-            <h1 className="text-2xl font-bold text-gray-900">Reset Password</h1>
+            <h1 className="text-2xl font-bold text-gray-900">
+              {resetStep === 'done' ? 'Password Updated' : 'Reset Password'}
+            </h1>
+            {resetStep === 'request' && (
+              <p className="text-sm text-gray-500 mt-2">Enter your email and we'll send you a 6-digit code.</p>
+            )}
+            {resetStep === 'verify' && (
+              <p className="text-sm text-gray-500 mt-2">Check your inbox for a 6-digit code, then set a new password.</p>
+            )}
           </div>
-          
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-            <p className="text-sm text-blue-800">
-              To reset your password, please email:
-            </p>
-            <p className="text-sm font-medium text-blue-900 mt-2">
-              cate.woolsey@av.vc
-            </p>
-            <p className="text-xs text-blue-600 mt-2">
-              Include your name and registered email address.
-            </p>
-          </div>
-          
-          <Button variant="outline" className="w-full" onClick={() => setShowForgotPassword(false)}>
-            Back to Login
-          </Button>
+
+          {resetStep === 'request' && (
+            <form onSubmit={handleSendResetCode}>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                  <input
+                    type="email"
+                    value={resetEmail}
+                    onChange={(e) => setResetEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2"
+                    required
+                    autoFocus
+                  />
+                </div>
+              </div>
+              {error && (
+                <div className="flex items-center gap-2 text-red-600 text-sm my-4">
+                  <AlertCircle size={16} />{error}
+                </div>
+              )}
+              <Button type="submit" className="w-full mt-6" disabled={loading}>
+                {loading ? 'Sending...' : 'Send Code'}
+              </Button>
+              <Button variant="outline" className="w-full mt-3" type="button" onClick={resetForgotState}>
+                Back to Login
+              </Button>
+            </form>
+          )}
+
+          {resetStep === 'verify' && (
+            <form onSubmit={handleVerifyResetCode}>
+              {resetInfo && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 text-sm text-blue-800">
+                  {resetInfo}
+                </div>
+              )}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">6-digit code</label>
+                  <input
+                    type="text"
+                    value={resetCode}
+                    onChange={(e) => setResetCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="123456"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 tracking-widest text-center text-xl"
+                    required
+                    autoFocus
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
+                  <input
+                    type="password"
+                    value={resetNewPassword}
+                    onChange={(e) => setResetNewPassword(e.target.value)}
+                    placeholder="At least 6 characters"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2"
+                    required
+                    minLength={6}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
+                  <input
+                    type="password"
+                    value={resetConfirmPassword}
+                    onChange={(e) => setResetConfirmPassword(e.target.value)}
+                    placeholder="Re-enter password"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2"
+                    required
+                  />
+                </div>
+              </div>
+              {error && (
+                <div className="flex items-center gap-2 text-red-600 text-sm my-4">
+                  <AlertCircle size={16} />{error}
+                </div>
+              )}
+              <Button type="submit" className="w-full mt-6" disabled={loading}>
+                {loading ? 'Resetting...' : 'Reset Password'}
+              </Button>
+              <button
+                type="button"
+                onClick={() => { setResetStep('request'); setResetCode(''); setResetNewPassword(''); setResetConfirmPassword(''); setError(''); }}
+                className="w-full mt-3 text-sm text-gray-500 hover:text-gray-700"
+              >
+                Didn't get a code? Try again
+              </button>
+            </form>
+          )}
+
+          {resetStep === 'done' && (
+            <div>
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6 text-sm text-green-800">
+                Your password has been updated. You can log in with the new password.
+              </div>
+              <Button className="w-full" onClick={resetForgotState}>
+                Back to Login
+              </Button>
+            </div>
+          )}
         </Card>
       </div>
     );
   }
+  
   
   // Password change view
   if (needsPasswordChange) {
