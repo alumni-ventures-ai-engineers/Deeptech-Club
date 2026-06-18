@@ -24,7 +24,7 @@ async function findOrCreateSb2UserByEmail(sb2, email, fullName) {
   const { data: existing } = await sb2
     .from('users')
     .select('id')
-    .eq('email', email)
+    .ilike('email', email)
     .maybeSingle();
   if (existing) return existing.id;
 

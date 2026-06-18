@@ -49,7 +49,7 @@ async function findOrCreateSb2User(sb2, member) {
   const { data: existing } = await sb2
     .from('users')
     .select('id')
-    .eq('email', email)
+    .ilike('email', email)
     .maybeSingle();
 
   if (existing) return existing.id;
@@ -96,7 +96,7 @@ export default async (req) => {
         const { data } = await sb2
           .from('users')
           .select('id')
-          .eq('email', member.email.toLowerCase().trim())
+          .ilike('email', member.email.toLowerCase().trim())
           .maybeSingle();
         return data?.id || null;
       })();
