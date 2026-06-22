@@ -27,6 +27,19 @@ const toEmbedUrl = (raw) => {
   if (host === 'loom.com') {
     return raw.replace('/share/', '/embed/');
   }
+  // Vidyard — bare play.vidyard.com/<id> hits their full-page UI which is
+  // iframe-hostile and doesn't auto-play. The .html suffix serves the
+  // embeddable player. Same pattern as YouTube /embed.
+  if (host === 'play.vidyard.com') {
+    const id = url.pathname.replace(/^\//, '').replace(/\.html$/, '').split('/')[0];
+    if (id) return `https://play.vidyard.com/${id}.html`;
+  }
+  // share.vidyard.com/watch/<id> is the share-link form — normalize to the
+  // play.vidyard.com/<id>.html embed.
+  if (host === 'share.vidyard.com') {
+    const m = url.pathname.match(/^\/watch\/([^/]+)/);
+    if (m) return `https://play.vidyard.com/${m[1]}.html`;
+  }
   return raw;
 };
 

@@ -497,7 +497,7 @@ const MemberDeals = ({ deals, currentUser }) => {
           // Any other materials (links like videos, additional, unknown doc_types) — append at the end.
           // For video links (av.vc/youtube/vimeo), auto-label by order: first = MP Video, second = Company Video.
           const knownTypes = new Set(canonicalDocOrder);
-          const isVideoUrl = (u) => /video\.av\.vc|youtube\.com|youtu\.be|vimeo\.com|loom\.com/i.test(u || '');
+          const isVideoUrl = (u) => /video\.av\.vc|youtube\.com|youtu\.be|vimeo\.com|loom\.com|vidyard\.com/i.test(u || '');
           const looksLikeUrl = (s) => typeof s === 'string' && /^(https?:\/\/|www\.)/i.test(s);
           let videoLabelIndex = 0;
           dealMaterials.filter((m) => !knownTypes.has(materialType(m))).forEach((m) => {
