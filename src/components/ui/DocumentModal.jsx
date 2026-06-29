@@ -1,6 +1,22 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Maximize2, Minimize2, X } from 'lucide-react';
+import { Download, Maximize2, Minimize2, X } from 'lucide-react';
 import { authFetch } from '../../supabase';
+
+// Build a safe download filename from the document title + mime type.
+// The bytes have already been watermarked server-side, so whatever we save
+// here carries the same "CONFIDENTIAL / Viewed by <email>" stamp the viewer
+// sees on screen.
+const EXT_BY_MIME = {
+  'application/pdf': 'pdf',
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/gif': 'gif',
+};
+const makeFileName = (title, mime) => {
+  const base = (title || 'document').replace(/[^\w.\- ]+/g, '').trim().replace(/\s+/g, '-') || 'document';
+  const ext = EXT_BY_MIME[mime] || 'pdf';
+  return base.toLowerCase().endsWith(`.${ext}`) ? base : `${base}.${ext}`;
+};
 
 // Document viewer modal. Loads the PDF through the watermark proxy
 // (/api/doc-view?id=<material_id>), wraps the bytes in a blob URL, and
@@ -18,6 +34,7 @@ export const DocumentModal = ({ isOpen, materialId, directUrl, title, onClose })
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [mimeType, setMimeType] = useState('');
   const modalRef = useRef(null);
   const blobUrlRef = useRef('');
 
@@ -47,6 +64,7 @@ export const DocumentModal = ({ isOpen, materialId, directUrl, title, onClose })
         }
         const blob = await res.blob();
         if (cancelled) return;
+        setMimeType(blob.type || 'application/pdf');
         const url = URL.createObjectURL(blob);
         blobUrlRef.current = url;
         // Append PDF viewer hints — Chrome honors these to suppress the
@@ -99,6 +117,24 @@ export const DocumentModal = ({ isOpen, materialId, directUrl, title, onClose })
     onClose?.();
   };
 
+  // Save the already-fetched (watermarked) bytes. We download blobUrlRef —
+  // the clean object URL, not the `#toolbar=0` viewer-hint variant — so the
+  // saved file is exactly the watermarked PDF the proxy returned.
+  const handleDownload = () => {
+    if (!blobUrlRef.current) return;
+    const a = document.createElement('a');
+    a.href = blobUrlRef.current;
+    a.download = makeFileName(title, mimeType);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
+  // Only offer download for the watermarked proxy path (materialId). The
+  // legacy directUrl branch serves the raw, unwatermarked file, so we leave
+  // it view-only.
+  const canDownload = !!materialId && !!blobUrlRef.current && !error && !loading;
+
   const toggleFullscreen = async () => {
     if (!modalRef.current) return;
     try {
@@ -132,6 +168,16 @@ export const DocumentModal = ({ isOpen, materialId, directUrl, title, onClose })
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 bg-white">
           <h2 className="text-base font-semibold text-gray-900 truncate pr-3">{title}</h2>
           <div className="flex items-center gap-1">
+            {canDownload && (
+              <button
+                onClick={handleDownload}
+                className="p-1.5 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
+                aria-label="Download"
+                title="Download (watermarked)"
+              >
+                <Download size={18} />
+              </button>
+            )}
             <button
               onClick={toggleFullscreen}
               className="p-1.5 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
