@@ -95,7 +95,7 @@ export default function App() {
   };
   
   // Current user - now based on logged in member, enriched with av_team data if is_manager
-  let currentUser = loggedInMember || members[0];
+  let currentUser = loggedInMember;
   
   // Enrich AV Team members with their av_team data
   if (currentUser?.is_manager && currentUser?.email) {
@@ -533,7 +533,11 @@ export default function App() {
   }
   
   // Member login view
-  if (currentView === 'member-login' && !loggedInMember) {
+  // Show the member login screen whenever no member is logged in (and not in
+  // admin mode / headed to admin-login), regardless of currentView. Prevents a
+  // null loggedInMember on a member view from falling through to members[0]
+  // (another member's account).
+  if (!loggedInMember && !isAdmin && currentView !== 'admin-login') {
     return <MemberLogin onLogin={handleMemberLogin} members={members} />;
   }
   
