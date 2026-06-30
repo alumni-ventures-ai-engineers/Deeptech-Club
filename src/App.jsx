@@ -36,6 +36,9 @@ import { MessagingContext, MessagingProvider } from './contexts/MessagingContext
 // MAIN APP
 // ============================================
 
+// Auto sign-out after this much inactivity (active use resets it). 12 hours.
+const IDLE_LIMIT_MS = 12 * 60 * 60 * 1000;
+
 export default function App() {
   const [currentView, setCurrentView] = useState('member-login');
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -152,13 +155,21 @@ export default function App() {
         .maybeSingle();
       
       if (memberSession) {
-        const { data: member } = await supabase
+        // Idle expiry: if the device has sat inactive past the limit, sign out
+        // (drop the session) instead of restoring it.
+        const lastActive = Number(localStorage.getItem('ngvc_last_active') || 0);
+        const idleExpired = lastActive && (Date.now() - lastActive > IDLE_LIMIT_MS);
+        if (idleExpired) {
+          await supabase.from('member_sessions').delete().eq('device_id', deviceId);
+        }
+        const { data: member } = idleExpired ? { data: null } : await supabase
           .from('members')
           .select('*')
           .eq('id', memberSession.member_id)
           .maybeSingle();
         
         if (member) {
+          try { localStorage.setItem('ngvc_last_active', String(Date.now())); } catch {}
           setLoggedInMember(member);
           setIsAdmin(false); // Ensure member mode
           if (storedView && !storedView.startsWith('admin-')) {
@@ -387,6 +398,7 @@ export default function App() {
   
   const handleMemberLogin = async (member, remember) => {
     setLoggedInMember(member);
+    try { localStorage.setItem('ngvc_last_active', String(Date.now())); } catch {}
     setCurrentView('dashboard');
     setIsAdmin(false); // Always start in member mode
     
@@ -420,6 +432,37 @@ export default function App() {
     setIsAdmin(false); // Reset admin mode
     setCurrentView('member-login');
   };
+
+  // Idle auto-logout: while a member is logged in, sign them out after
+  // IDLE_LIMIT_MS of no activity. Any real interaction resets the timer, so an
+  // active user is never kicked out; returning to a long-idle tab logs out.
+  useEffect(() => {
+    if (!loggedInMember) return;
+    try { localStorage.setItem('ngvc_last_active', String(Date.now())); } catch {}
+    let lastWrite = 0;
+    const touch = () => {
+      const now = Date.now();
+      if (now - lastWrite > 60000) { lastWrite = now; try { localStorage.setItem('ngvc_last_active', String(now)); } catch {} }
+    };
+    const isExpired = () => {
+      const la = Number(localStorage.getItem('ngvc_last_active') || 0);
+      return la && (Date.now() - la > IDLE_LIMIT_MS);
+    };
+    const events = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+    events.forEach((e) => window.addEventListener(e, touch, { passive: true }));
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (isExpired()) handleMemberLogout(); else touch();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    const timer = setInterval(() => { if (isExpired()) handleMemberLogout(); }, 60000);
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, touch));
+      document.removeEventListener('visibilitychange', onVisible);
+      clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loggedInMember]);
   
   const handleAdminLogin = async (remember) => {
     setIsAdmin(true);
