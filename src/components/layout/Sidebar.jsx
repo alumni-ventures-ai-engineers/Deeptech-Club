@@ -76,27 +76,29 @@ export const Sidebar = ({ currentView, setCurrentView, userRole, isOpen, setIsOp
         </nav>
 
         {/* Bottom Section - User Profile + Controls */}
-        {currentUser && (
+        {(currentUser || isAdmin) && (
           <div className="absolute bottom-4 left-4 right-4 space-y-2">
             {/* User Profile */}
-            <div 
-              className="flex items-center gap-3 px-3 py-3 rounded-lg bg-white/10 cursor-pointer hover:bg-white/15 transition-colors"
-              onClick={() => { setCurrentView('profile'); setIsOpen(false); }}
-            >
-              <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg overflow-hidden" style={{ backgroundColor: accentColor }}>
-                {currentUser.photo_url ? (
-                  <img src={resolveStorageUrl(currentUser.photo_url, 'profile-photos')} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <span className="text-white font-medium text-sm">
-                    {currentUser.full_name?.split(' ').map(n => n[0]).join('').toUpperCase() || '?'}
-                  </span>
-                )}
+            {currentUser && (
+              <div
+                className="flex items-center gap-3 px-3 py-3 rounded-lg bg-white/10 cursor-pointer hover:bg-white/15 transition-colors"
+                onClick={() => { setCurrentView('profile'); setIsOpen(false); }}
+              >
+                <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg overflow-hidden" style={{ backgroundColor: accentColor }}>
+                  {currentUser.photo_url ? (
+                    <img src={resolveStorageUrl(currentUser.photo_url, 'profile-photos')} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-white font-medium text-sm">
+                      {currentUser.full_name?.split(' ').map(n => n[0]).join('').toUpperCase() || '?'}
+                    </span>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-white truncate">{currentUser.full_name}</p>
+                  <p className="text-xs text-white/60">My Profile</p>
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white truncate">{currentUser.full_name}</p>
-                <p className="text-xs text-white/60">My Profile</p>
-              </div>
-            </div>
+            )}
 
             {/* Admin/Member Toggle - Only for admin users */}
             {currentUser?.is_manager === true && (
