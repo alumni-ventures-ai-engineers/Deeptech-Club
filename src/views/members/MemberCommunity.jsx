@@ -86,11 +86,11 @@ const MemberCommunity = ({ members, avTeam, onViewMember }) => {
       </h3>
       
       <span className="text-xs px-2 py-1 bg-amber-100 text-amber-700 rounded-full mb-1">
-        {member.club_role}
+        {member.title || member.club_role}
       </span>
-      
+
       <p className="text-sm text-gray-600 line-clamp-1">
-        {member.title ? `${member.title}` : member.company || 'Alumni Ventures'}
+        {member.company || 'Alumni Ventures'}
       </p>
     </div>
   );

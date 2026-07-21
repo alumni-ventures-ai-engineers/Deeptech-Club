@@ -162,7 +162,7 @@ const MemberDashboard = ({ members, sessions, deals: allDeals, announcements, av
                     {member.full_name?.split(' ')[0]}
                   </span>
                   <span className="text-xs text-white/60 mt-0.5 text-center leading-tight">
-                    AV: {member.club_role}
+                    AV: {member.title || member.club_role}
                   </span>
                 </div>
               ))}
