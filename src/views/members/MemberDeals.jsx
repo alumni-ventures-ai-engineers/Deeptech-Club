@@ -5,7 +5,12 @@ import { formatDate } from '../../utils/formatters';
 import { formatDealDescription } from '../../utils/formatDealDescription';
 import { Button, Card, Badge, Modal, DocumentModal, VideoModal, UkDealDisclaimer } from '../../components/ui';
 
-const MemberDeals = ({ deals, currentUser }) => {
+const MemberDeals = ({ deals: allDeals, currentUser }) => {
+  // Deals archived on the admin side are hidden from members entirely — not
+  // just from Active, but from Past too. Filtered once here so every
+  // downstream usage of `deals` in this file inherits it automatically.
+  const deals = allDeals.filter(d => !d.archived_at);
+
   const [activeTab, setActiveTab] = useState('active');
   const [selectedDeal, setSelectedDeal] = useState(null);
   const [showInterestModal, setShowInterestModal] = useState(false);

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, FileText, ExternalLink, CheckCircle, Mail, AlertCircle, ChevronDown, ChevronRight, Globe, CalendarClock, Archive, Power } from 'lucide-react';
+import { Plus, Trash2, FileText, ExternalLink, CheckCircle, Mail, AlertCircle, ChevronDown, ChevronRight, Globe, CalendarClock, Archive, ArchiveRestore, History, Power, RotateCcw } from 'lucide-react';
 import { supabase, callDealRoomAdmin } from '../../supabase';
 import { Button, Card, Modal, UkDealDisclaimer } from '../../components/ui';
 import { sendDealPostedEmail, sendDealActiveEmail, isEmailTestMode, CATE_EMAIL } from '../../utils/emailNotifications';
@@ -18,6 +18,14 @@ const AdminDeals = ({ deals, onRefresh }) => {
   const [expandedDeal, setExpandedDeal] = useState(null);
   const [dealMaterials, setDealMaterials] = useState({});
   const [loadingMaterials, setLoadingMaterials] = useState({});
+
+  // Deals / Archived Deals toggle — purely a view filter over the archived_at flag
+  const [showArchived, setShowArchived] = useState(false);
+
+  // Undo "mark as past" — since past/active is entirely derived from closes_at,
+  // undoing it always conflicts with a closes_at still in the past, so we ask
+  // the admin to either fix the date or clear it (reactivate anyway).
+  const [undoPastDeal, setUndoPastDeal] = useState(null);
 
   // Club-deadline modal state
   const [deadlineModalDeal, setDeadlineModalDeal] = useState(null);
@@ -228,6 +236,50 @@ const AdminDeals = ({ deals, onRefresh }) => {
     }
   };
 
+  // Reactivate a past deal by clearing its (necessarily past) closes_at.
+  const reactivateAnyway = async () => {
+    if (!undoPastDeal) return;
+    try {
+      const { error } = await supabase.from('deals').update({ closes_at: null }).eq('id', undoPastDeal.id);
+      if (error) throw error;
+      onRefresh();
+    } catch (err) {
+      alert('Error reactivating deal: ' + err.message);
+    } finally {
+      setUndoPastDeal(null);
+    }
+  };
+
+  // Instead of clearing the deadline, let the admin pick a new (future) one.
+  const changeCloseDateInstead = () => {
+    const deal = undoPastDeal;
+    setUndoPastDeal(null);
+    if (deal) openDeadlineModal(deal);
+  };
+
+  // Archive/restore only toggle deals.archived_at — a pure admin-side visibility
+  // flag. Nothing about the deal's data, member interests, or investments
+  // changes; archived deals stay fully intact and unaffected on the member side.
+  const archiveDeal = async (deal) => {
+    try {
+      const { error } = await supabase.from('deals').update({ archived_at: new Date().toISOString() }).eq('id', deal.id);
+      if (error) throw error;
+      onRefresh();
+    } catch (err) {
+      alert('Error archiving deal: ' + err.message);
+    }
+  };
+
+  const unarchiveDeal = async (deal) => {
+    try {
+      const { error } = await supabase.from('deals').update({ archived_at: null }).eq('id', deal.id);
+      if (error) throw error;
+      onRefresh();
+    } catch (err) {
+      alert('Error restoring deal: ' + err.message);
+    }
+  };
+
   // Render a stored UTC instant as Eastern (America/New_York) wall-clock for the
   // datetime-local input, so the admin always edits in ET regardless of their
   // own browser timezone.
@@ -343,14 +395,35 @@ const AdminDeals = ({ deals, onRefresh }) => {
     return { wrap: 'bg-orange-100', icon: 'text-orange-600' };
   };
 
+  const visibleDeals = deals.filter(d => showArchived ? !!d.archived_at : !d.archived_at);
+  const archivedCount = deals.filter(d => !!d.archived_at).length;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-gray-900">Manage Deals</h2>
-          <p className="text-sm text-gray-500">{deals.length} deal{deals.length !== 1 ? 's' : ''} in portal</p>
+          <p className="text-sm text-gray-500">
+            {visibleDeals.length} {showArchived ? 'archived ' : ''}deal{visibleDeals.length !== 1 ? 's' : ''}{!showArchived ? ' in portal' : ''}
+          </p>
         </div>
         <Button icon={Plus} onClick={openPicker}>Add Deal</Button>
+      </div>
+
+      {/* Deals / Archived Deals toggle */}
+      <div className="inline-flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+        <button
+          onClick={() => setShowArchived(false)}
+          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${!showArchived ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+          Deals
+        </button>
+        <button
+          onClick={() => setShowArchived(true)}
+          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${showArchived ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+          Archived Deals{archivedCount > 0 ? ` (${archivedCount})` : ''}
+        </button>
       </div>
 
       {/* Deals List */}
@@ -360,19 +433,22 @@ const AdminDeals = ({ deals, onRefresh }) => {
             <div className="w-10 h-10 border-2 border-gray-200 border-t-gray-400 rounded-full animate-spin"></div>
           </div>
         </Card>
-      ) : deals.length === 0 ? (
+      ) : visibleDeals.length === 0 ? (
         <Card>
           <div className="text-center py-12">
-            <p className="text-gray-500">No deals yet. Click "Add Deal" to get started.</p>
+            <p className="text-gray-500">
+              {showArchived ? 'No archived deals.' : 'No deals yet. Click "Add Deal" to get started.'}
+            </p>
           </div>
         </Card>
       ) : (
         <div className="space-y-2">
-          {deals.map(deal => {
+          {visibleDeals.map(deal => {
             const isExpanded = expandedDeal === deal.id;
             const materials = dealMaterials[deal.source_deal_id] || [];
             const isLoadingMats = loadingMaterials[deal.source_deal_id];
             const headerLogoSrc = dealDetails[deal.source_deal_id]?.terms?.company_image_path || deal.company_logo;
+            const isPast = !!(deal.closes_at && new Date(deal.closes_at).getTime() < Date.now());
 
             return (
               <Card key={deal.id} className="overflow-hidden !p-0">
@@ -424,7 +500,6 @@ const AdminDeals = ({ deals, onRefresh }) => {
                       <CalendarClock size={18} />
                     </button>
                     {(() => {
-                      const isPast = !!(deal.closes_at && new Date(deal.closes_at).getTime() < Date.now());
                       const isOn = !!deal.interest_active;
                       return (
                         <button
@@ -454,13 +529,40 @@ const AdminDeals = ({ deals, onRefresh }) => {
                     >
                       <Mail size={18} />
                     </button>
-                    <button
-                      onClick={() => markAsPast(deal)}
-                      className="p-2.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                      title="Mark deal as past"
-                    >
-                      <Archive size={18} />
-                    </button>
+                    {isPast ? (
+                      <button
+                        onClick={() => setUndoPastDeal(deal)}
+                        className="p-2.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                        title="Undo — restore to active"
+                      >
+                        <RotateCcw size={18} />
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => markAsPast(deal)}
+                        className="p-2.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                        title="Mark deal as past"
+                      >
+                        <History size={18} />
+                      </button>
+                    )}
+                    {showArchived ? (
+                      <button
+                        onClick={() => unarchiveDeal(deal)}
+                        className="p-2.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                        title="Restore deal to the main Deals list"
+                      >
+                        <ArchiveRestore size={18} />
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => archiveDeal(deal)}
+                        className="p-2.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                        title="Archive deal"
+                      >
+                        <Archive size={18} />
+                      </button>
+                    )}
                     <button
                       onClick={() => removeDeal(deal)}
                       className="p-2.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -641,6 +743,27 @@ const AdminDeals = ({ deals, onRefresh }) => {
           })}
         </div>
       )}
+
+      {/* Undo "mark as past" conflict modal — closes_at is necessarily in the
+          past whenever this fires, so undoing always needs one of these two
+          resolutions rather than silently doing something inconsistent. */}
+      <Modal
+        isOpen={!!undoPastDeal}
+        onClose={() => setUndoPastDeal(null)}
+        title={undoPastDeal ? `Reactivate — ${undoPastDeal.company_name}` : 'Reactivate Deal'}
+        size="md"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            This deal's close date{undoPastDeal?.closes_at ? ` (${new Date(undoPastDeal.closes_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' })})` : ''} is in the past, which is why it shows as past. Reactivating it won't stick unless the date changes too — update the close date, or reactivate anyway to clear the deadline entirely.
+          </p>
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <Button variant="outline" onClick={() => setUndoPastDeal(null)}>Cancel</Button>
+            <Button variant="outline" onClick={changeCloseDateInstead}>Change Close Date</Button>
+            <Button onClick={reactivateAnyway}>Reactivate Anyway</Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Set Club Deadline Modal */}
       <Modal

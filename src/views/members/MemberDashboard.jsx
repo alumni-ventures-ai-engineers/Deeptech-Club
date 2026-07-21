@@ -5,7 +5,10 @@ import { Button, Card, Badge, Avatar, Modal } from '../../components/ui';
 import { callDealRoomMember } from '../../supabase';
 import { resolveStorageUrl } from '../../utils/storageUrl';
 
-const MemberDashboard = ({ members, sessions, deals, announcements, avTeam, content, onNavigate, onViewMember, currentUser, onRefresh, siteSettings }) => {
+const MemberDashboard = ({ members, sessions, deals: allDeals, announcements, avTeam, content, onNavigate, onViewMember, currentUser, onRefresh, siteSettings }) => {
+  // Deals archived on the admin side shouldn't surface on the member dashboard either.
+  const deals = allDeals.filter(d => !d.archived_at);
+
   // Filter and sort upcoming sessions by date, get the most upcoming one
   const today = new Date();
   today.setHours(0, 0, 0, 0);
