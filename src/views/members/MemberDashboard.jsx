@@ -82,17 +82,9 @@ const MemberDashboard = ({ members, sessions, deals: allDeals, announcements, av
     <div className="space-y-6">
       {/* Welcome Banner */}
       <div className="rounded-xl p-6 text-white relative overflow-hidden" style={{ backgroundColor: siteSettings?.primary_color || '#1B4D5C' }}>
-        {siteSettings?.cohort_number ? (
-          <div className="absolute top-4 right-4 text-right">
-            <div className="flex items-baseline gap-1">
-              <span className="text-white/60 text-xs uppercase tracking-wider">Cohort</span>
-              <span className="text-4xl font-bold" style={{ fontFamily: 'Georgia, serif', color: siteSettings?.accent_color || '#C9A227' }}>
-                {siteSettings.cohort_number}
-              </span>
-            </div>
-          </div>
-        ) : null}
-        
+        {/* Cohort Number is an internal-only field (see Admin Settings) —
+            intentionally never rendered to members. */}
+
         <div className="mb-4">
           <h1 className="text-2xl font-bold">{siteSettings?.club_name || 'Next Generation'} {siteSettings?.club_subtitle || 'Venture Club'}</h1>
           <p className="text-white/70 text-sm">{cohortMembers.length} members</p>

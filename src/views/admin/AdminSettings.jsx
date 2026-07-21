@@ -145,6 +145,7 @@ const AdminSettings = ({ siteSettings, onRefresh }) => {
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2"
                 placeholder="1"
               />
+              <p className="text-xs text-gray-500 mt-1">Internal use only — not shown to members or in the preview below.</p>
             </div>
           </div>
         </Card>
@@ -271,7 +272,7 @@ const AdminSettings = ({ siteSettings, onRefresh }) => {
                 </div>
                 <div>
                   <p className="text-white font-medium text-sm">
-                    {formData.club_name}{formData.cohort_name ? ` (${formData.cohort_name})` : ''}
+                    {formData.club_name}
                   </p>
                   <p className="text-white/60 text-xs">{formData.club_subtitle}</p>
                 </div>
