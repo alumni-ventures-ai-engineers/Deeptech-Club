@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { TrendingUp, FileText, AlertCircle, Eye, Link2, Check } from 'lucide-react';
 import { supabase, callDealRoomMember } from '../../supabase';
 import { formatDate } from '../../utils/formatters';
@@ -9,7 +9,11 @@ const MemberDeals = ({ deals: allDeals, currentUser }) => {
   // Deals archived on the admin side are hidden from members entirely — not
   // just from Active, but from Past too. Filtered once here so every
   // downstream usage of `deals` in this file inherits it automatically.
-  const deals = allDeals.filter(d => !d.archived_at);
+  // Memoized so effects keyed on `deals` don't re-fire every render — a plain
+  // .filter() call returns a new array reference each time even when nothing
+  // actually changed, which was causing the deal-room loading effect below to
+  // restart indefinitely (permanent spinner).
+  const deals = useMemo(() => allDeals.filter(d => !d.archived_at), [allDeals]);
 
   const [activeTab, setActiveTab] = useState('active');
   const [selectedDeal, setSelectedDeal] = useState(null);
