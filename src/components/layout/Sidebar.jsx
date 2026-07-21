@@ -100,8 +100,10 @@ export const Sidebar = ({ currentView, setCurrentView, userRole, isOpen, setIsOp
               </div>
             )}
 
-            {/* Admin/Member Toggle - Only for admin users */}
-            {currentUser?.is_manager === true && (
+            {/* Admin/Member Toggle - for admin users, or whenever already in
+                admin mode (e.g. a password-only admin session with no
+                underlying member profile) so there's always a way back. */}
+            {(isAdmin || currentUser?.is_manager === true) && (
               <div className="bg-white/10 rounded-lg p-2">
                 <p className="text-xs text-white/60 mb-2 px-2">{isAdmin ? 'Admin Mode' : 'Member Mode'}</p>
                 <div className="flex gap-1">

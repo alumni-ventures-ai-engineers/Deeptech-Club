@@ -145,6 +145,7 @@ export default function App() {
       // ignore settings errors and proceed
     }
 
+    let memberRestored = false;
     try {
       // Check member session - use maybeSingle() to avoid 406 errors
       const { data: memberSession, error: memberError } = await supabase
@@ -175,6 +176,7 @@ export default function App() {
           try { localStorage.setItem('ngvc_last_active', String(Date.now())); } catch {}
           setLoggedInMember(member);
           setIsAdmin(false); // Ensure member mode
+          memberRestored = true;
           if (storedView && !storedView.startsWith('admin-')) {
             setCurrentView(storedView);
           } else {
@@ -195,8 +197,25 @@ export default function App() {
         .maybeSingle();
       
       if (adminSession && storedIsAdmin && storedView?.startsWith('admin-')) {
-        setIsAdmin(true);
-        setCurrentView(storedView);
+        // ngvc_admin_remember is only ever set by the standalone admin
+        // password screen (handleAdminLogin) — its presence means this admin
+        // session isn't tied to any member account, so its own "remember this
+        // device" choice is authoritative. Otherwise this admin session came
+        // from a manager toggling in from their own member login, so it
+        // should only survive a reload alongside that member session —
+        // restoring it alone would leave the sidebar with a currentUser-less
+        // admin mode (no profile card, no toggle, just Logout).
+        let adminRememberRaw = null;
+        try { adminRememberRaw = localStorage.getItem('ngvc_admin_remember'); } catch {}
+        const isPasswordAdminSession = adminRememberRaw !== null;
+        const shouldRestoreAdmin = isPasswordAdminSession ? adminRememberRaw !== 'false' : memberRestored;
+
+        if (shouldRestoreAdmin) {
+          setIsAdmin(true);
+          setCurrentView(storedView);
+        } else {
+          try { localStorage.setItem('ngvc_is_admin', 'false'); } catch {}
+        }
       }
       
       // Note: We don't auto-activate admin mode anymore
@@ -409,6 +428,11 @@ export default function App() {
     // caller against it server-side, so it must exist even when "remember me"
     // is off. `remember` only gates auto-restore on the next load (stored here).
     try { localStorage.setItem('ngvc_member_remember', remember ? 'true' : 'false'); } catch {}
+    // Clear any leftover password-admin "remember" flag from an earlier admin
+    // session on this device — a fresh member login is a fresh context, and
+    // this flag should only reflect an explicit choice made on the admin
+    // password screen, never linger and affect this login.
+    try { localStorage.removeItem('ngvc_admin_remember'); } catch {}
     const deviceId = getDeviceId();
     try {
       // Clear any existing session for this device, then create a fresh one
@@ -473,8 +497,9 @@ export default function App() {
 
     // Always create an admin_sessions row — server-side admin actions
     // (e.g. /api/deal-room-admin) check this table to verify the caller.
-    // The `remember` flag now only controls whether the localStorage flag
-    // restores admin mode on next page load.
+    // The `remember` flag controls whether checkExistingSessions restores
+    // this password-only admin mode (no underlying member) on next page load.
+    try { localStorage.setItem('ngvc_admin_remember', remember ? 'true' : 'false'); } catch {}
     const deviceId = getDeviceId();
     try {
       await supabase.from('admin_sessions').delete().eq('device_id', deviceId);
