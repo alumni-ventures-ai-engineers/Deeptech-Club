@@ -36,8 +36,18 @@ import { MessagingContext, MessagingProvider } from './contexts/MessagingContext
 // MAIN APP
 // ============================================
 
-// Auto sign-out after this much inactivity (active use resets it). 12 hours.
+// Auto sign-out after this much inactivity WHILE A TAB STAYS OPEN (active use
+// resets it). 12 hours. This is a walk-away-from-an-open-tab protection and
+// is intentionally short — it must NOT be reused to decide whether a
+// "Remember Me" session restores on a fresh visit (that was the bug: a
+// remembered member returning the next day got signed out anyway because
+// both checks shared this same 12h clock).
 const IDLE_LIMIT_MS = 12 * 60 * 60 * 1000;
+
+// How long a "Remember Me" session survives across separate visits (browser
+// closed/reopened, computer restarted, etc.) — independent of IDLE_LIMIT_MS
+// above. 30 days is the whole point of checking the box.
+const REMEMBER_LIMIT_MS = 30 * 24 * 60 * 60 * 1000;
 
 export default function App() {
   const [currentView, setCurrentView] = useState('member-login');
@@ -156,13 +166,18 @@ export default function App() {
         .maybeSingle();
       
       if (memberSession) {
-        // Drop (don't restore) the session if it sat idle past the limit OR if
-        // "remember me" was off — the row only exists to authenticate deal-room
-        // calls during that session, not to persist across reloads.
+        // Drop (don't restore) the session if "remember me" was off (the row
+        // only exists to authenticate deal-room calls during that session,
+        // not to persist across reloads), or if a REMEMBERED session has
+        // gone unused for a full REMEMBER_LIMIT_MS (30 days) — not the much
+        // shorter IDLE_LIMIT_MS, which is only for auto-logout while a tab
+        // stays open (previously this reused that same 12h clock here too,
+        // so a remembered member returning the next day was signed out
+        // anyway — defeating the point of the checkbox).
         const remembered = (() => { try { return localStorage.getItem('ngvc_member_remember') !== 'false'; } catch { return true; } })();
         const lastActive = Number(localStorage.getItem('ngvc_last_active') || 0);
-        const idleExpired = lastActive && (Date.now() - lastActive > IDLE_LIMIT_MS);
-        const dropSession = !remembered || idleExpired;
+        const rememberExpired = lastActive && (Date.now() - lastActive > REMEMBER_LIMIT_MS);
+        const dropSession = !remembered || rememberExpired;
         if (dropSession) {
           await supabase.from('member_sessions').delete().eq('device_id', deviceId);
         }
