@@ -86,8 +86,12 @@ const MemberCommunity = ({ members, avTeam, onViewMember }) => {
       </h3>
       
       <span className="text-xs px-2 py-1 bg-amber-100 text-amber-700 rounded-full mb-1">
-        {member.title || member.club_role}
+        {member.club_role}
       </span>
+
+      {member.title && (
+        <p className="text-sm text-gray-700 mb-1">{member.title}</p>
+      )}
 
       <p className="text-sm text-gray-600 line-clamp-1">
         {member.company || 'Alumni Ventures'}
@@ -172,11 +176,13 @@ const MemberCommunity = ({ members, avTeam, onViewMember }) => {
               />
               <div>
                 <h2 className="text-xl font-semibold text-gray-900">{selectedAVMember.full_name}</h2>
-                <p className="text-gray-600">{selectedAVMember.title}</p>
-                <p className="text-gray-500">{selectedAVMember.company}</p>
-                <span className="inline-block mt-2 px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-sm font-medium">
+                <span className="inline-block mt-1 px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-sm font-medium">
                   {selectedAVMember.club_role}
                 </span>
+                {selectedAVMember.title && (
+                  <p className="text-gray-600 mt-1">{selectedAVMember.title}</p>
+                )}
+                <p className="text-gray-500">{selectedAVMember.company}</p>
               </div>
             </div>
             
