@@ -142,6 +142,10 @@ const AdminDealInterests = ({ onRefresh }) => {
     const rows = dealResponses.map(r => {
       const email = r.user?.email?.toLowerCase();
       if (email) respondedEmails.add(email);
+      // orig_* is only populated once this row has been admin-edited at least
+      // once (see deal-room-admin.mjs). Until then, the row's own current
+      // values ARE the original — nothing has diverged from them yet.
+      const hasOrig = r.orig_decision != null;
       return {
         id: r.id,
         name: r.user ? `${r.user.first_name || ''} ${r.user.last_name || ''}`.trim() || 'Unknown' : 'Unknown',
@@ -150,7 +154,11 @@ const AdminDealInterests = ({ onRefresh }) => {
         amount: r.desired_amount,
         reason: r.reason || null,
         submitted: r.submitted_at,
+        editedAt: r.last_edited_at || null,
         remindersSent: r.reminders_sent || 0,
+        origDecision: hasOrig ? r.orig_decision : (r.decision || 'pending'),
+        origAmount: hasOrig ? r.orig_desired_amount : r.desired_amount,
+        origReason: hasOrig ? r.orig_reason : (r.reason || null),
       };
     });
 
@@ -165,7 +173,11 @@ const AdminDealInterests = ({ onRefresh }) => {
           amount: null,
           reason: null,
           submitted: null,
+          editedAt: null,
           remindersSent: 0,
+          origDecision: 'pending',
+          origAmount: null,
+          origReason: null,
         });
       }
     });
@@ -267,7 +279,11 @@ const AdminDealInterests = ({ onRefresh }) => {
     setEditDecision(decision);
     setEditAmount(row.amount != null ? String(row.amount) : '');
     setEditReason(row.reason || '');
-    setOriginalValues({ decision, amount: row.amount, reason: row.reason });
+    // origDecision/origAmount/origReason reflect the member's TRUE first
+    // response (persisted server-side), not just this row's current values —
+    // so Restore is correct even if the row has already been edited before.
+    const origDecision = row.origDecision === 'pass' ? 'pass' : row.origDecision === 'pending' ? 'no response' : 'invest';
+    setOriginalValues({ decision: origDecision, amount: row.origAmount, reason: row.origReason });
     // Stash the deal context so saveEdit can create a response on a row that
     // doesn't have one yet (pending-* synthetic rows have no responseId).
     setEditDealContext({ sourceDealId: deal.source_deal_id, dealId: deal.id });
@@ -300,10 +316,17 @@ const AdminDealInterests = ({ onRefresh }) => {
       desiredAmount = parsed;
     }
     const reason = editDecision === 'no response' ? null : (editReason.trim() || null);
-    const apiDecision = editDecision === 'no response' ? 'pending' : editDecision;
+    const isPendingRow = String(row.id).startsWith('pending-');
     setSavingEditId(row.id);
     try {
-      if (String(row.id).startsWith('pending-')) {
+      if (editDecision === 'no response') {
+        // "No Response" isn't a storable decision — it means no response row
+        // exists at all (mirrors how every other unanswered member is
+        // represented). A synthetic pending-* row already has no row to clear.
+        if (!isPendingRow) {
+          await callDealRoomAdmin('clearResponse', { responseId: row.id });
+        }
+      } else if (isPendingRow) {
         if (!editDealContext?.sourceDealId) {
           throw new Error('Deal is not linked to the deal room yet (no source_deal_id). Cannot record a response.');
         }
@@ -311,14 +334,14 @@ const AdminDealInterests = ({ onRefresh }) => {
           sourceDealId: editDealContext.sourceDealId,
           email: row.email,
           fullName: row.name,
-          decision: apiDecision,
+          decision: editDecision,
           desiredAmount,
           reason,
         });
       } else {
         await callDealRoomAdmin('updateResponse', {
           responseId: row.id,
-          decision: apiDecision,
+          decision: editDecision,
           desiredAmount,
           reason,
         });
@@ -619,6 +642,9 @@ const AdminDealInterests = ({ onRefresh }) => {
                           </td>
                           <td className="px-6 py-4 text-gray-500">
                             {timeAgo(row.submitted)}
+                            {row.editedAt && (
+                              <div className="text-xs text-gray-400 mt-0.5">Edited {timeAgo(row.editedAt)}</div>
+                            )}
                           </td>
                           <td className="px-6 py-4 text-gray-700">
                             {totalReminders}

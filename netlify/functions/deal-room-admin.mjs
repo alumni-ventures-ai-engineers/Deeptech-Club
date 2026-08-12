@@ -167,28 +167,56 @@ export default async (req) => {
       // pass = no amount; invest can have a numeric amount or null (Max)
       const amount = decision === 'pass' ? null : (desiredAmount ?? null);
       const now = new Date().toISOString();
+
+      // Read current state so we can (a) preserve submitted_at, and (b) snapshot
+      // the true original response the FIRST time this row is admin-edited.
+      const { data: existing, error: readErr } = await sb2
+        .from('dr_responses')
+        .select('submitted_at, orig_decision, decision, desired_amount, reason')
+        .eq('id', responseId)
+        .maybeSingle();
+      if (readErr) throw readErr;
+      if (!existing) return json(404, { error: 'Response not found' });
+
       const patch = {
         decision,
         desired_amount: amount,
         updated_at: now,
+        last_edited_at: now,
       };
       // Only touch reason if the client sent it (undefined = leave as-is).
       if (reason !== undefined) patch.reason = reason || null;
 
       // Stamp submitted_at if the row doesn't have one yet (admin first to
       // record a decision for someone who never submitted themselves).
-      const { data: existing } = await sb2
-        .from('dr_responses')
-        .select('submitted_at')
-        .eq('id', responseId)
-        .maybeSingle();
-      if (!existing?.submitted_at) patch.submitted_at = now;
+      if (!existing.submitted_at) patch.submitted_at = now;
+
+      // Snapshot the pre-edit values as the "true original" once, so a later
+      // Restore always goes back to the member's actual first response —
+      // not just whatever this row looked like at the start of this edit.
+      if (existing.orig_decision == null) {
+        patch.orig_decision = existing.decision;
+        patch.orig_desired_amount = existing.desired_amount;
+        patch.orig_reason = existing.reason;
+      }
 
       const { error: updErr } = await sb2
         .from('dr_responses')
         .update(patch)
         .eq('id', responseId);
       if (updErr) throw updErr;
+      return json(200, { success: true });
+    }
+
+    if (action === 'clearResponse') {
+      // Admin explicitly marking a member as having "No Response" — matches
+      // how unanswered members are represented everywhere else in the portal
+      // (no row = pending), so this deletes the row rather than storing an
+      // invalid decision value.
+      const { responseId } = body;
+      if (!responseId) return json(400, { error: 'Missing responseId' });
+      const { error } = await sb2.from('dr_responses').delete().eq('id', responseId);
+      if (error) throw error;
       return json(200, { success: true });
     }
 
@@ -210,7 +238,7 @@ export default async (req) => {
       // separate response per club).
       const { data: existing } = await sb2
         .from('dr_responses')
-        .select('id, submitted_at')
+        .select('id, submitted_at, orig_decision, decision, desired_amount, reason')
         .eq('deal_id', sourceDealId)
         .eq('user_id', userId)
         .eq('club_id', clubId)
@@ -220,14 +248,22 @@ export default async (req) => {
       const now = new Date().toISOString();
 
       if (existing) {
-        const patch = { decision, desired_amount: amount, updated_at: now };
+        const patch = { decision, desired_amount: amount, updated_at: now, last_edited_at: now };
         if (!existing.submitted_at) patch.submitted_at = now;
         if (reason !== undefined) patch.reason = reason || null;
+        // Snapshot the true original once, on the first admin edit of this row.
+        if (existing.orig_decision == null) {
+          patch.orig_decision = existing.decision;
+          patch.orig_desired_amount = existing.desired_amount;
+          patch.orig_reason = existing.reason;
+        }
         const { error } = await sb2.from('dr_responses').update(patch).eq('id', existing.id);
         if (error) throw error;
         return json(200, { success: true, id: existing.id, updated: true });
       }
 
+      // Brand new row: the member never submitted anything, so their true
+      // original response is "no response" (mirrored elsewhere as a missing row).
       const { data: inserted, error } = await sb2
         .from('dr_responses')
         .insert([{
@@ -239,6 +275,10 @@ export default async (req) => {
           reason: reason || null,
           submitted_at: now,
           reminders_sent: 0,
+          orig_decision: 'pending',
+          orig_desired_amount: null,
+          orig_reason: null,
+          last_edited_at: now,
         }])
         .select('id')
         .single();
