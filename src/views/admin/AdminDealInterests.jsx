@@ -20,6 +20,7 @@ const AdminDealInterests = ({ onRefresh }) => {
   const [editReason, setEditReason] = useState('');
   const [editDealContext, setEditDealContext] = useState(null);
   const [savingEditId, setSavingEditId] = useState(null);
+  const [originalValues, setOriginalValues] = useState(null);
   // Search + status filter at the top of the page.
   const [dealSearch, setDealSearch] = useState('');
   const [dealStatusFilter, setDealStatusFilter] = useState('all'); // 'all' | 'active' | 'closed'
@@ -262,9 +263,11 @@ const AdminDealInterests = ({ onRefresh }) => {
 
   const startEdit = (row, deal) => {
     setEditingRowId(row.id);
-    setEditDecision(row.decision === 'pass' ? 'pass' : 'invest');
+    const decision = row.decision === 'pass' ? 'pass' : row.decision === 'pending' ? 'no response' : 'invest';
+    setEditDecision(decision);
     setEditAmount(row.amount != null ? String(row.amount) : '');
     setEditReason(row.reason || '');
+    setOriginalValues({ decision, amount: row.amount, reason: row.reason });
     // Stash the deal context so saveEdit can create a response on a row that
     // doesn't have one yet (pending-* synthetic rows have no responseId).
     setEditDealContext({ sourceDealId: deal.source_deal_id, dealId: deal.id });
@@ -274,10 +277,19 @@ const AdminDealInterests = ({ onRefresh }) => {
     setEditingRowId(null);
     setEditReason('');
     setEditDealContext(null);
+    setOriginalValues(null);
+  };
+
+  const restoreOriginal = () => {
+    if (originalValues) {
+      setEditDecision(originalValues.decision);
+      setEditAmount(originalValues.amount != null ? String(originalValues.amount) : '');
+      setEditReason(originalValues.reason || '');
+    }
   };
 
   const saveEdit = async (row) => {
-    // Invest requires a numeric amount (> 0). Pass has no amount.
+    // Invest requires a numeric amount (> 0). Pass and No Response have no amount.
     let desiredAmount = null;
     if (editDecision === 'invest') {
       const parsed = parseFloat(editAmount);
@@ -287,7 +299,8 @@ const AdminDealInterests = ({ onRefresh }) => {
       }
       desiredAmount = parsed;
     }
-    const reason = editReason.trim() || null;
+    const reason = editDecision === 'no response' ? null : (editReason.trim() || null);
+    const apiDecision = editDecision === 'no response' ? 'pending' : editDecision;
     setSavingEditId(row.id);
     try {
       if (String(row.id).startsWith('pending-')) {
@@ -298,14 +311,14 @@ const AdminDealInterests = ({ onRefresh }) => {
           sourceDealId: editDealContext.sourceDealId,
           email: row.email,
           fullName: row.name,
-          decision: editDecision,
+          decision: apiDecision,
           desiredAmount,
           reason,
         });
       } else {
         await callDealRoomAdmin('updateResponse', {
           responseId: row.id,
-          decision: editDecision,
+          decision: apiDecision,
           desiredAmount,
           reason,
         });
@@ -314,6 +327,7 @@ const AdminDealInterests = ({ onRefresh }) => {
       setEditingRowId(null);
       setEditReason('');
       setEditDealContext(null);
+      setOriginalValues(null);
       await loadData();
     } catch (err) {
       alert(`Failed to update: ${err.message || err}`);
@@ -541,6 +555,7 @@ const AdminDealInterests = ({ onRefresh }) => {
                               >
                                 <option value="invest">Invest</option>
                                 <option value="pass">Pass</option>
+                                <option value="no response">No Response</option>
                               </select>
                             ) : (
                               <>
@@ -619,6 +634,14 @@ const AdminDealInterests = ({ onRefresh }) => {
                                     style={{ backgroundColor: 'var(--primary-color, #1B4D5C)' }}
                                   >
                                     {savingEditId === row.id ? 'Saving...' : 'Save'}
+                                  </button>
+                                  <button
+                                    onClick={restoreOriginal}
+                                    disabled={savingEditId === row.id}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                                    title="Restore original response"
+                                  >
+                                    Restore
                                   </button>
                                   <button
                                     onClick={cancelEdit}
