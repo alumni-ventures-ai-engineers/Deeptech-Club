@@ -373,6 +373,31 @@ const AdminDeals = ({ deals, onRefresh }) => {
            (d.company_url || '').toLowerCase().includes(q);
   });
 
+  // A company can have more than one source deal — separate syndication
+  // rounds under different fund codes. When a newer round exists, adding
+  // the older one would give this club a stale round instead of the
+  // current one, so the older round is still shown (for context) but its
+  // Add button is disabled. UK variants intentionally coexist alongside
+  // a regular deal of the same name, so they're excluded from this — a
+  // UK deal is never "superseded".
+  const supersededSb2Ids = (() => {
+    const byCompany = new Map();
+    sb2Deals.forEach(d => {
+      if (d.is_uk) return;
+      const key = (d.name || d.company_name || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+      if (!key) return;
+      if (!byCompany.has(key)) byCompany.set(key, []);
+      byCompany.get(key).push(d);
+    });
+    const superseded = new Set();
+    byCompany.forEach(group => {
+      if (group.length < 2) return;
+      const newest = group.reduce((a, b) => (new Date(a.created_at) > new Date(b.created_at) ? a : b));
+      group.forEach(d => { if (d.id !== newest.id) superseded.add(d.id); });
+    });
+    return superseded;
+  })();
+
   // Document type labels
   const docTypeLabels = {
     'due_diligence': 'Due Diligence',
@@ -841,15 +866,17 @@ const AdminDeals = ({ deals, onRefresh }) => {
               {filteredSb2Deals.map(deal => {
                 const isAdded = alreadyAdded.has(deal.id);
                 const isAdding = adding[deal.id];
+                const isSuperseded = !isAdded && supersededSb2Ids.has(deal.id);
+                const fundCode = deal.sheet_payload_json?.fund_code;
 
                 return (
                   <div
                     key={deal.id}
-                    className={`px-3 py-2.5 border rounded-lg flex items-center justify-between gap-3 ${isAdded ? 'bg-gray-50 border-gray-200' : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50'} transition-colors`}
+                    className={`px-3 py-2.5 border rounded-lg flex items-center justify-between gap-3 ${isAdded || isSuperseded ? 'bg-gray-50 border-gray-200' : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50'} transition-colors`}
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium text-sm text-gray-900 truncate">{deal.name || deal.company_name}</span>
+                        <span className={`font-medium text-sm truncate ${isSuperseded ? 'text-gray-400' : 'text-gray-900'}`}>{deal.name || deal.company_name}</span>
                         <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold flex-shrink-0 ${
                           deal.deal_status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
                         }`}>
@@ -865,6 +892,16 @@ const AdminDeals = ({ deals, onRefresh }) => {
                             UK Version
                           </span>
                         )}
+                        {fundCode && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium flex-shrink-0 bg-indigo-100 text-indigo-700">
+                            {fundCode}
+                          </span>
+                        )}
+                        {isSuperseded && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium flex-shrink-0 bg-gray-200 text-gray-500">
+                            Superseded by newer round
+                          </span>
+                        )}
                       </div>
                       {deal.headline && (
                         <p className="text-xs text-gray-500 truncate mt-0.5">{deal.headline}</p>
@@ -875,6 +912,14 @@ const AdminDeals = ({ deals, onRefresh }) => {
                         <span className="flex items-center gap-1 text-xs text-green-600 font-medium">
                           <CheckCircle size={14} /> Added
                         </span>
+                      ) : isSuperseded ? (
+                        <button
+                          disabled
+                          title="A newer syndication round exists for this company — add that one instead."
+                          className="px-3 py-1 bg-gray-200 text-gray-400 rounded text-xs font-medium cursor-not-allowed"
+                        >
+                          Add
+                        </button>
                       ) : (
                         <button
                           onClick={() => addDeal(deal)}
